@@ -1,11 +1,26 @@
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api";
+// `??` only falls back on null/undefined. The deploy workflow passes these as
+// Docker build args, so an unset GitHub secret arrives as an EMPTY STRING, not
+// undefined, and `new URL("")` below threw "Invalid URL" while prerendering.
+// The arguments stay static member accesses on purpose: Next.js only inlines
+// `process.env.NEXT_PUBLIC_*` when it can see the exact property name.
+function envUrl(raw: string | undefined, fallback: string): string {
+  return raw && raw.trim() ? raw.trim() : fallback;
+}
 
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api";
+const API_BASE = envUrl(
+  process.env.NEXT_PUBLIC_API_URL,
+  "http://127.0.0.1:8000/api",
+);
 
-export const WS_URL =
-  process.env.NEXT_PUBLIC_WS_URL ?? "ws://127.0.0.1:8000/ws/chat";
+export const API_URL = envUrl(
+  process.env.NEXT_PUBLIC_API_URL,
+  "http://127.0.0.1:8000/api",
+);
+
+export const WS_URL = envUrl(
+  process.env.NEXT_PUBLIC_WS_URL,
+  "ws://127.0.0.1:8000/ws/chat",
+);
 
 function readCookie(name: string): string {
   if (typeof document === "undefined") return "";
