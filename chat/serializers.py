@@ -18,7 +18,10 @@ class ServerSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "description", "avatar", "owner", "member_count", "created_at")
 
     def get_member_count(self, obj: Server) -> int:
-        return obj.members.count() + 1
+        count = obj.members.count()
+        if obj.owner_id and not obj.members.filter(id=obj.owner_id).exists():
+            count += 1
+        return count
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -132,7 +135,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
         return result
 
     def get_member_count(self, obj: ChatRoom) -> int:
-        return obj.members.count() + 1
+        return len(self.get_members(obj))
 
     def get_unread_count(self, obj: ChatRoom) -> int:
         user = self.context.get("request").user

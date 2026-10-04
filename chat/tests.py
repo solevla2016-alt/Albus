@@ -1309,3 +1309,321 @@ class TestBugReports:
             format="json",
         )
         assert resp.status_code == 400
+
+
+@pytest.mark.django_db()
+class TestBugReportMail:
+    """A configured recipient must not turn a stored report into a 500."""
+
+    def test_report_survives_missing_smtp(self, api_client, member, monkeypatch):
+        from chat.models import BugReport
+
+        monkeypatch.setattr(
+            "chat.api_views.settings.BUG_REPORT_EMAIL", "bugs@albus.local", raising=False
+        )
+        api_client.force_authenticate(user=member)
+        resp = api_client.post(
+            "/api/chat/bug-reports/",
+            {"text": "кнопка не работает", "page_url": "/chat"},
+            format="json",
+        )
+        assert resp.status_code == 201
+        assert BugReport.objects.filter(user=member).exists()
+
+    def test_report_survives_broken_smtp(self, api_client, member, monkeypatch):
+        from chat.models import BugReport
+
+        monkeypatch.setattr(
+            "chat.api_views.settings.BUG_REPORT_EMAIL", "bugs@albus.local", raising=False
+        )
+        monkeypatch.setattr(
+            "users.mail.settings.YANDEX_MAIL_USERNAME", "bot@yandex.ru", raising=False
+        )
+        monkeypatch.setattr(
+            "users.mail.settings.YANDEX_MAIL_PASSWORD", "secret", raising=False
+        )
+
+        def _boom(*_args, **_kwargs):
+            raise OSError("connection reset")
+
+        monkeypatch.setattr("users.mail.smtplib.SMTP_SSL", _boom)
+        api_client.force_authenticate(user=member)
+        resp = api_client.post(
+            "/api/chat/bug-reports/", {"text": "опять сломано"}, format="json"
+        )
+        assert resp.status_code == 201
+        assert BugReport.objects.filter(user=member).exists()
+
+
+@pytest.mark.django_db()
+class TestRoomReadAccess:
+    """Reading a room's history requires access to that room."""
+
+    def test_outsider_cannot_read_messages(self, api_client, stranger, group_room, owner_message):
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.get(f"/api/chat/rooms/{group_room.id}/messages/")
+        assert resp.status_code == 403
+        assert owner_message.text not in str(resp.data)
+
+    def test_outsider_cannot_search(self, api_client, stranger, group_room, owner_message):
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.get(f"/api/chat/rooms/{group_room.id}/search/?q=owner")
+        assert resp.status_code == 403
+        assert owner_message.text not in str(resp.data)
+
+    def test_outsider_cannot_transcribe(self, api_client, stranger, group_room):
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.post(
+            f"/api/chat/rooms/{group_room.id}/transcribe/", {"message_id": 1}, format="json"
+        )
+        assert resp.status_code == 403
+
+    def test_member_can_still_read(self, api_client, member, group_room, owner_message):
+        api_client.force_authenticate(user=member)
+        resp = api_client.get(f"/api/chat/rooms/{group_room.id}/messages/")
+        assert resp.status_code == 200
+        assert owner_message.text in str(resp.data)
+
+    def test_admin_can_read(self, api_client, admin, group_room, owner_message):
+        api_client.force_authenticate(user=admin)
+        resp = api_client.get(f"/api/chat/rooms/{group_room.id}/messages/")
+        assert resp.status_code == 200
+
+
+@pytest.mark.django_db()
+class TestMemberCount:
+    """The owner is often already a member, so a blind +1 double counted them."""
+
+    def test_owner_in_members_counted_once(self, group_room, member):
+        data = ChatRoomSerializer(group_room, context={"request": _req(member)}).data
+        assert data["member_count"] == len(data["members"])
+
+    def test_owner_not_in_members_still_counted(self, owner):
+        room = ChatRoom.objects.create(name="solo", owner=owner, room_type="group")
+        data = ChatRoomSerializer(room, context={"request": _req(owner)}).data
+        assert data["member_count"] == 1
+        assert len(data["members"]) == 1
+
+
+def _req(user):
+    from rest_framework.test import APIRequestFactory
+
+    request = APIRequestFactory().get("/")
+    request.user = user
+    return request
+
+
+@pytest.mark.django_db(transaction=True)
+class TestReplyOverWebsocket:
+    """Replying used to await a plain bool, which killed the socket instantly."""
+
+    async def test_reply_is_broadcast_with_quote(self, group_room, owner, member, owner_message, ws_connect):
+        owner_client, ok1 = await ws_connect(owner, group_room.name)
+        assert ok1
+        member_client, ok2 = await ws_connect(member, group_room.name)
+        assert ok2
+        await _drain_until(owner_client, "history")
+        await _drain_until(member_client, "history")
+
+        await member_client.send_json_to(
+            {"action": "message", "message": "re: hi", "reply_to_id": owner_message.id}
+        )
+        payload = await _drain_until(owner_client, "message", timeout=3)
+        assert payload["message"] == "re: hi"
+        assert payload["reply_to"]["id"] == owner_message.id
+        assert payload["reply_to"]["message"] == owner_message.text
+
+        stored = await sync_to_async(Message.objects.get)(text="re: hi")
+        assert stored.reply_to_id == owner_message.id
+        await owner_client.disconnect()
+        await member_client.disconnect()
+
+    async def test_reply_to_unknown_message_errors(self, group_room, member, ws_connect):
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to(
+            {"action": "message", "message": "re: ghost", "reply_to_id": 999999}
+        )
+        err = await _drain_until(client, "error", timeout=3)
+        assert "не найдено" in err.get("message", "")
+        await client.disconnect()
+
+    async def test_reply_to_message_of_other_room_rejected(self, other_room, owner, member, ws_connect):
+        group_room = await sync_to_async(ChatRoom.objects.create)(
+            name="reply-room", owner=owner, room_type="group"
+        )
+        await sync_to_async(group_room.members.add)(owner, member)
+        foreign = await sync_to_async(_msg)(other_room, owner, "private to other room")
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to(
+            {"action": "message", "message": "re: foreign", "reply_to_id": foreign.id}
+        )
+        err = await _drain_until(client, "error", timeout=3)
+        assert "не найдено" in err.get("message", "")
+        await client.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestPayloadHardening:
+    """Malformed frames used to raise out of receive() and drop the socket."""
+
+    async def test_non_object_json_does_not_kill_socket(self, group_room, member, ws_connect):
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to([1, 2, 3])
+        err = await _drain_until(client, "error", timeout=3)
+        assert "JSON" in err.get("message", "")
+        await client.send_json_to({"action": "message", "message": "still alive"})
+        payload = await _drain_until(client, "message", timeout=3)
+        assert payload["message"] == "still alive"
+        await client.disconnect()
+
+    async def test_bad_message_id_does_not_kill_socket(self, group_room, member, ws_connect):
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to({"action": "edit", "message_id": "abc", "text": "x"})
+        await _drain_until(client, "error", timeout=3)
+        await client.send_json_to({"action": "message", "message": "alive"})
+        payload = await _drain_until(client, "message", timeout=3)
+        assert payload["message"] == "alive"
+        await client.disconnect()
+
+    async def test_oversized_edit_is_rejected(self, group_room, member, member_message, ws_connect):
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to(
+            {
+                "action": "edit",
+                "message_id": member_message.id,
+                "text": "x" * (MAX_MESSAGE_LENGTH + 10),
+            }
+        )
+        err = await _drain_until(client, "error", timeout=3)
+        assert str(MAX_MESSAGE_LENGTH) in err.get("message", "")
+        stored = await sync_to_async(Message.objects.get)(id=member_message.id)
+        assert len(stored.text) <= MAX_MESSAGE_LENGTH
+        await client.disconnect()
+
+    async def test_oversized_emoji_is_rejected(self, group_room, member, member_message, ws_connect):
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to(
+            {"action": "reaction", "message_id": member_message.id, "emoji": "e" * 40}
+        )
+        err = await _drain_until(client, "error", timeout=3)
+        assert "эмодзи" in err.get("message", "")
+        await client.disconnect()
+
+    async def test_oversized_attachment_name_is_truncated(self, group_room, member, ws_connect):
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to(
+            {
+                "action": "message",
+                "message": "file",
+                "attachment_type": "file",
+                "attachment_name": "n" * 900,
+            }
+        )
+        payload = await _drain_until(client, "message", timeout=3)
+        assert len(payload["attachment_name"]) <= 255
+        await client.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestReadReceipts:
+    """Unread is derived from max(read id), so the newest slice must be marked."""
+
+    async def test_marking_read_clears_unread_beyond_200(self, group_room, owner, member, ws_connect):
+        def _seed() -> None:
+            for i in range(260):
+                _msg(group_room, owner, f"m{i}")
+
+        await sync_to_async(_seed)()
+        client, ok = await ws_connect(member, group_room.name)
+        assert ok
+        history = await _drain_until(client, "history", timeout=5)
+        newest_id = max(m["id"] for m in history["messages"])
+
+        await client.send_json_to({"action": "read", "last_message_id": newest_id})
+        await asyncio.sleep(0.4)
+
+        def _unread() -> int:
+            return ChatRoomSerializer(
+                group_room, context={"request": _req(member)}
+            ).data["unread_count"]
+
+        assert await sync_to_async(_unread)() == 0
+        await client.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestSharedAiRoomPrivacy:
+    """One user's DM privacy must not mute the assistant for everybody."""
+
+    async def test_nobody_privacy_does_not_block_ai_room(self, owner, member, stranger):
+        from django.conf import settings as dj_settings
+
+        ai_name = dj_settings.AI_ASSISTANT_USERNAME
+        ai = await sync_to_async(User.objects.create_user)(username=ai_name, password="x")
+        room = await sync_to_async(ChatRoom.objects.create)(
+            name=ai_name, owner=ai, room_type=ChatRoom.RoomType.DIRECT, is_private=True
+        )
+        await sync_to_async(room.members.add)(ai, owner, member, stranger)
+        stranger.message_privacy = User.MessagePrivacy.NOBODY
+        await sync_to_async(stranger.save)()
+
+        consumer = ChatConsumer()
+        consumer.scope = {"user": member}
+        consumer.room = room
+        assert await consumer._can_dm(member, room) is True
+
+    async def test_real_dm_still_respects_privacy(self, owner, stranger):
+        stranger.message_privacy = User.MessagePrivacy.NOBODY
+        await sync_to_async(stranger.save)()
+        room = await sync_to_async(ChatRoom.objects.create)(
+            name="dm-privacy", owner=owner, room_type=ChatRoom.RoomType.DIRECT
+        )
+        await sync_to_async(room.members.add)(owner, stranger)
+
+        consumer = ChatConsumer()
+        consumer.scope = {"user": owner}
+        consumer.room = room
+        assert await consumer._can_dm(owner, room) is False
+
+
+@pytest.mark.django_db(transaction=True)
+class TestCallMeta:
+    """call_accept is handled by the callee, so it must not record itself as caller."""
+
+    async def test_accept_records_real_caller(self, group_room, owner, member, ws_connect):
+        caller_client, ok1 = await ws_connect(owner, group_room.name)
+        assert ok1
+        callee_client, ok2 = await ws_connect(member, group_room.name)
+        assert ok2
+        await _drain_until(caller_client, "history")
+        await _drain_until(callee_client, "history")
+
+        await caller_client.send_json_to(
+            {"action": "call_start", "target": member.username, "call_id": "c1"}
+        )
+        await _drain_until(callee_client, "call_incoming", timeout=3)
+        await callee_client.send_json_to(
+            {"action": "call_accept", "target": owner.username, "call_id": "c1"}
+        )
+        await _drain_until(caller_client, "call_accept", timeout=3)
+
+        raw = await ChatConsumer.redis_pool.get("call:meta:c1")
+        meta = json.loads(raw)
+        assert meta["caller"] == owner.username
+        assert meta["callee"] == member.username
+        await caller_client.disconnect()
+        await callee_client.disconnect()

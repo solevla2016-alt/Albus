@@ -161,10 +161,9 @@ def room_create_view(request: Request) -> Response:
 
 @api_view(["GET"])
 def room_messages_view(request: Request, room_id: int) -> Response:
-    try:
-        room = ChatRoom.objects.get(id=room_id)
-    except ChatRoom.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    room, error = _room_for_user(request, room_id)
+    if error is not None:
+        return error
 
     messages = (
         Message.objects
@@ -271,20 +270,20 @@ def bug_report_create_view(request: Request) -> Response:
         settings, "YANDEX_MAIL_FROM", ""
     )
     if recipient:
-        from users.mail import send_email
-
         body = (
-            "\u041d\u043e\u0432\u044b\u0439 \u043e\u0442\u0447\u0451\u0442 \u043e\u0431 \u043e\u0448\u0438\u0431\u043a\u0435\n\n"
-            f"\u0410\u0432\u0442\u043e\u0440: {report.user.username} (id {report.user.id})\n"
-            f"\u041a\u043e\u0433\u0434\u0430: {report.created_at.isoformat()}\n"
-            f"\u0421\u0442\u0440\u0430\u043d\u0438\u0446\u0430: {report.page_url}\n\n"
+            "Новый отчёт об ошибке\n\n"
+            f"Автор: {report.user.username} (id {report.user.id})\n"
+            f"Когда: {report.created_at.isoformat()}\n"
+            f"Страница: {report.page_url}\n\n"
             f"{report.text}\n"
         )
         try:
+            # imported lazily: a mail outage must never cost the stored report
+            from users.mail import send_email
+
             send_email(
                 recipient,
-                f"\u041e\u0448\u0438\u0431\u043a\u0430 \u0432 Albus: {report.user.username}",
-                None,
+                f"Ошибка в Albus: {report.user.username}",
                 body,
             )
         except RuntimeError:
@@ -408,10 +407,9 @@ def room_upload_view(request: Request, room_id: int) -> Response:
 
 @api_view(["GET"])
 def room_search_view(request: Request, room_id: int) -> Response:
-    try:
-        room = ChatRoom.objects.get(id=room_id)
-    except ChatRoom.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    room, error = _room_for_user(request, room_id)
+    if error is not None:
+        return error
 
     query = request.query_params.get("q", "").strip()
     if not query:
@@ -434,10 +432,9 @@ def room_search_view(request: Request, room_id: int) -> Response:
 @authentication_classes([SessionAuthentication])
 @permission_classes([permissions.IsAuthenticated])
 def room_transcribe_view(request: Request, room_id: int) -> Response:
-    try:
-        room = ChatRoom.objects.get(id=room_id)
-    except ChatRoom.DoesNotExist:
-        return Response(status=status.HTTP_404_NOT_FOUND)
+    room, error = _room_for_user(request, room_id)
+    if error is not None:
+        return error
 
     message_id = request.data.get("message_id")
     if not message_id:

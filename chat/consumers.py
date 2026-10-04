@@ -16,7 +16,17 @@ from django.contrib.auth import get_user_model
 from .ai_service import build_history, get_ai_answer
 from .models import ChatRoom, Message, Reaction, ReadStatus
 from .permissions import can_delete_message, is_banned
-from .validators import validate_message
+from .validators import (
+    MAX_ATTACHMENT_NAME_LENGTH,
+    MAX_ATTACHMENT_TYPE_LENGTH,
+    MAX_ATTACHMENT_URL_LENGTH,
+    MAX_EMOJI_LENGTH,
+    MAX_MESSAGE_LENGTH,
+    coerce_duration,
+    coerce_id,
+    coerce_text,
+    validate_message,
+)
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -265,6 +275,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self._send_error("Некорректный JSON")
             return
 
+        # ``data.get`` below assumed a mapping, so a bare ``123`` or ``[1,2]``
+        # raised AttributeError and tore the socket down.
+        if not isinstance(data, dict):
+            await self._send_error("Ожидался JSON-объект")
+            return
+
         action = data.get("action", "message")
 
         # Rate limit so one connection cannot flood a room.
@@ -279,6 +295,22 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self._rate_count > budget:
             await self._send_error("Слишком много запросов, подождите пару секунд")
             return
+
+        # Membership and bans were only ever checked in connect(), so a user
+        # banned or removed from a private room afterwards kept an open socket
+        # that still received every broadcast. Re-checked on a short interval
+        # rather than per frame, to keep the query cost off the hot path.
+        if now - getattr(self, "_access_checked_at", 0.0) > 5.0:
+            user = self.scope["user"]
+            if await self._is_banned_user(user):
+                await self._send_error("Вы забанены в этой комнате")
+                await self.close()
+                return
+            if not await self._has_access(user):
+                await self._send_error("Нет доступа к комнате")
+                await self.close()
+                return
+            self._access_checked_at = now
 
         redis = await self._get_redis()
         await redis.expire(f"presence:chan:{self.channel_name}", 300)
@@ -321,7 +353,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
 
         user = self.scope["user"]
-        reply_to_id = data.get("reply_to_id")
+        reply_to_id = coerce_id(data.get("reply_to_id"))
 
         if await self._is_banned_user(user):
             await self._send_error("Вы забанены в этой комнате")
@@ -336,10 +368,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 await self._send_error("Сообщение для ответа не найдено")
                 return
 
-        attachment_type = data.get("attachment_type", "none")
-        attachment_url = data.get("attachment_url")
-        attachment_name = data.get("attachment_name", "")
-        duration = data.get("duration")
+        # These values went straight into the model, where an oversized name or a
+        # non-numeric duration raised DataError/ValueError and dropped the socket.
+        attachment_type = (
+            coerce_text(data.get("attachment_type", "none"), MAX_ATTACHMENT_TYPE_LENGTH)
+            or "none"
+        )
+        attachment_url = coerce_text(data.get("attachment_url"), MAX_ATTACHMENT_URL_LENGTH)
+        attachment_name = (
+            coerce_text(data.get("attachment_name"), MAX_ATTACHMENT_NAME_LENGTH) or ""
+        )
+        duration = coerce_duration(data.get("duration"))
 
         message = await self._create_message(
             user_id=user.id,
@@ -406,11 +445,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def _handle_edit(self, data: dict[str, Any]) -> None:
-        message_id = data.get("message_id")
-        new_text = data.get("text", "").strip()
+        message_id = coerce_id(data.get("message_id"))
+        raw_text = data.get("text")
+        new_text = raw_text.strip() if isinstance(raw_text, str) else ""
 
         if not message_id or not new_text:
             await self._send_error("message_id и text обязательны")
+            return
+        # MAX_MESSAGE_LENGTH used to be enforced on create only, so an edit was a
+        # way to write an unbounded body into the room.
+        if len(new_text) > MAX_MESSAGE_LENGTH:
+            await self._send_error(f"Сообщение длиннее {MAX_MESSAGE_LENGTH} символов")
             return
 
         user = self.scope["user"]
@@ -434,15 +479,21 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     async def _handle_read(self, data: dict[str, Any]) -> None:
         user = self.scope["user"]
-        last_id = data.get("last_message_id")
+        last_id = coerce_id(data.get("last_message_id"))
         await self._mark_read(user.id, last_id)
 
     async def _handle_reaction(self, data: dict[str, Any]) -> None:
-        message_id = data.get("message_id")
-        emoji = data.get("emoji", "").strip()
+        message_id = coerce_id(data.get("message_id"))
+        raw_emoji = data.get("emoji")
+        emoji = raw_emoji.strip() if isinstance(raw_emoji, str) else ""
 
         if not message_id or not emoji:
             await self._send_error("message_id и emoji обязательны")
+            return
+        # Reaction.emoji is a CharField(max_length=16); a longer value used to
+        # raise DataError and close the socket.
+        if len(emoji) > MAX_EMOJI_LENGTH:
+            await self._send_error("Слишком длинный эмодзи")
             return
 
         user = self.scope["user"]
@@ -618,7 +669,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         }
 
     async def _handle_pin(self, data: dict[str, Any]) -> None:
-        message_id = data.get("message_id")
+        message_id = coerce_id(data.get("message_id"))
         if not message_id:
             await self._send_error("message_id обязателен")
             return
@@ -640,7 +691,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def _handle_delete_message(self, data: dict[str, Any]) -> None:
-        message_id = data.get("message_id")
+        message_id = coerce_id(data.get("message_id"))
         if not message_id:
             await self._send_error("message_id обязателен")
             return
@@ -912,10 +963,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 return
             await redis.sadd(f"call:act:{room_id}", caller, target)
             await redis.expire(f"call:act:{room_id}", 300)
+            # `self` is the callee here: it is the one who accepted, while
+            # `target` is the original caller. Recording them the other way
+            # round made the signalling route the caller's own SDP back to
+            # itself as soon as the callee had more than one open channel.
+            caller_chan = await redis.get(f"call:cc:{call_id}")
             meta = json.dumps({
                 "room_id": room_id,
-                "caller": caller, "callee": target,
-                "caller_id": caller_id, "callee_id": target_id,
+                "caller": target, "callee": caller,
+                "caller_id": target_id, "callee_id": caller_id,
+                "caller_channel": caller_chan,
                 "callee_channel": self.channel_name,
             })
             await redis.set(f"call:meta:{call_id}", meta, ex=600)
@@ -1023,6 +1080,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             except json.JSONDecodeError:
                 meta = None
             if not meta:
+                continue
+            # `call:user:*` is keyed by user, not by connection, so without this
+            # check closing one socket (switching rooms, closing a second tab)
+            # tore down a call that was still live on another connection.
+            owners = {meta.get("caller_channel"), meta.get("callee_channel")}
+            owners.discard(None)
+            if owners and self.channel_name not in owners:
                 continue
             other = meta.get("callee") if meta.get("caller") == user.username else meta.get("caller")
             await self._end_call(redis, call_id)
@@ -1191,7 +1255,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         attachment_name: str = "",
         duration: int | None = None,
     ) -> Message:
-        return Message.objects.create(
+        message = Message.objects.create(
             user_id=user_id,
             room_id=room_id,
             text=text,
@@ -1201,6 +1265,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             attachment_name=attachment_name,
             duration=duration,
         )
+        # The caller serialises reply_to right after this returns, on the event
+        # loop, so the related row must be fetched here instead of lazily.
+        if message.reply_to_id is not None:
+            message = Message.objects.select_related(
+                "user", "reply_to", "reply_to__user"
+            ).get(pk=message.pk)
+        return message
 
     @database_sync_to_async
     def _get_messages(self, room_id: int) -> list[dict]:
@@ -1267,9 +1338,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def _can_dm(self, user, room: ChatRoom) -> bool:
         if room.room_type != "direct":
             return True
+        # ensure_ai_chat puts every user into one single shared "direct" room,
+        # so its member list is not a DM peer list. Without this guard one user
+        # setting "кто может писать: никто" silently muted the assistant for
+        # everybody else too.
+        if room.members.filter(username=settings.AI_ASSISTANT_USERNAME).exists():
+            return True
         for other in room.members.exclude(id=user.pk):
-            if other.username == settings.AI_ASSISTANT_USERNAME:
-                continue
             if other.message_privacy == User.MessagePrivacy.NOBODY:
                 return False
         return True
@@ -1278,6 +1353,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def _room_has_ai(self) -> bool:
         return self.room.members.filter(username=settings.AI_ASSISTANT_USERNAME).exists()
 
+    @database_sync_to_async
     def _validate_reply(self, reply_to_id: int) -> bool:
         return Message.objects.filter(id=reply_to_id, room_id=self.room.id).exists()
 
@@ -1345,10 +1421,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _mark_read(self, user_id: int, last_id: int | None) -> None:
         qs = Message.objects.filter(room_id=self.room.id).exclude(user_id=user_id)
-        if last_id:
+        if last_id is not None:
             qs = qs.filter(id__lte=last_id)
-        for m in qs.only("id")[:200]:
-            ReadStatus.objects.get_or_create(message_id=m.id, user_id=user_id)
+        # Newest first. Unread is derived from max(read id) on both the socket
+        # and the REST path, so marking the oldest slice (Message.Meta.ordering
+        # is ascending) left the badge stuck at the old count until the user had
+        # reconnected enough times to walk it forward.
+        ids = list(qs.order_by("-id").values_list("id", flat=True)[:200])
+        if not ids:
+            return
+        ReadStatus.objects.bulk_create(
+            [ReadStatus(message_id=mid, user_id=user_id) for mid in ids],
+            ignore_conflicts=True,
+            batch_size=200,
+        )
 
     async def _broadcast_online_users(self) -> None:
         redis = await self._get_redis()

@@ -319,7 +319,9 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
           break;
 
         case "error":
-          setChatError(data.error ?? "Ошибка соединения");
+          // the server sends the text under `message`; `error` is kept as a
+          // fallback so either shape still surfaces a real reason
+          setChatError(data.error ?? data.message ?? "Ошибка соединения");
           break;
       }
     };
