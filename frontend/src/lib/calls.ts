@@ -14,9 +14,9 @@ const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     {
-      urls: ["turn:5.35.83.69:3478?transport=udp", "turn:5.35.83.69:3478?transport=tcp"],
-      username: "webrtc",
-      credential: "jwchatturn1790185471",
+      urls: ["turn:albuschat.ru:3478?transport=udp", "turn:albuschat.ru:3478?transport=tcp"],
+      username: "albus",
+      credential: "albus6238a6749ad2ba6325862e7c",
     },
   ],
 };

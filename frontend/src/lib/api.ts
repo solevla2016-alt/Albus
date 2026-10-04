@@ -1,26 +1,33 @@
-// `??` only falls back on null/undefined. The deploy workflow passes these as
-// Docker build args, so an unset GitHub secret arrives as an EMPTY STRING, not
-// undefined, and `new URL("")` below threw "Invalid URL" while prerendering.
-// The arguments stay static member accesses on purpose: Next.js only inlines
-// `process.env.NEXT_PUBLIC_*` when it can see the exact property name.
+// Same-origin by default. The app is served behind a reverse proxy that exposes
+// /api, /ws and /media on the same host, so nothing here needs a build-time
+// hostname: the same image keeps working when the domain changes, cookies stay
+// first-party, and no CORS/SameSite=None juggling is required.
+//
+// `??` would not have been enough on its own: the deploy workflow passes these
+// as docker build args, so an unset GitHub secret arrives as an EMPTY STRING.
 function envUrl(raw: string | undefined, fallback: string): string {
   return raw && raw.trim() ? raw.trim() : fallback;
 }
 
-const API_BASE = envUrl(
-  process.env.NEXT_PUBLIC_API_URL,
-  "http://127.0.0.1:8000/api",
-);
+export const API_URL = envUrl(process.env.NEXT_PUBLIC_API_URL, "/api");
+const API_BASE = API_URL;
 
-export const API_URL = envUrl(
-  process.env.NEXT_PUBLIC_API_URL,
-  "http://127.0.0.1:8000/api",
-);
+export const WS_URL = envUrl(process.env.NEXT_PUBLIC_WS_URL, "/ws/chat");
 
-export const WS_URL = envUrl(
-  process.env.NEXT_PUBLIC_WS_URL,
-  "ws://127.0.0.1:8000/ws/chat",
-);
+/** Absolute ws(s):// endpoint for a room, resolved against the current origin. */
+export function wsRoomUrl(roomName: string): string {
+  const origin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "http://127.0.0.1:8000";
+  const base = new URL(WS_URL, origin);
+  if (base.protocol === "https:") {
+    base.protocol = "wss:";
+  } else if (base.protocol === "http:") {
+    base.protocol = "ws:";
+  }
+  return `${base.toString().replace(/\/+$/, "")}/${encodeURIComponent(roomName)}/`;
+}
 
 function readCookie(name: string): string {
   if (typeof document === "undefined") return "";
@@ -141,13 +148,13 @@ export async function getServerInvite<T>(serverId: number): Promise<T> {
   return apiFetch<T>(`/chat/servers/${serverId}/invite/`);
 }
 
-const apiOrigin = new URL(API_URL).origin;
-const MEDIA_BASE = apiOrigin;
-
+// The API already returns absolute paths such as /media/uploads/x.mp3, and
+// media is served from the same origin, so they are used as-is. Deriving an
+// origin here with new URL() at module scope used to run during prerendering.
 export function mediaUrl(path: string): string {
   if (!path) return "";
   if (path.startsWith("http")) return path;
-  return `${MEDIA_BASE}${path}`;
+  return path;
 }
 
 export async function deleteMessageApi(roomId: number, messageId: number): Promise<void> {

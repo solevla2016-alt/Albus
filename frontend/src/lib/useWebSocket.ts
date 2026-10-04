@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useChatStore } from "./store";
-import { API_URL, WS_URL } from "./api";
+import { API_URL, wsRoomUrl } from "./api";
 import type { CallMode, ChatRoom, Message, Server, WebSocketMessage } from "./types";
 import {
   handleAnswer,
@@ -25,8 +25,6 @@ import {
   setCallSender,
 } from "./calls";
 import { CACHE_KEYS, readCache, writeCache } from "./cache";
-
-const WS_BASE = WS_URL;
 
 export function useWebSocket(roomName: string | null, roomId: number | null = null) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -95,7 +93,7 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(`${WS_BASE}/${encodeURIComponent(roomName)}/`);
+      ws = new WebSocket(wsRoomUrl(roomName));
     } catch (err) {
       console.error("[ws] failed to create WebSocket:", err);
       reconnectAttempts.current += 1;
