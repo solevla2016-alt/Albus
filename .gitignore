@@ -1,0 +1,40 @@
+# Backend
+/venv
+/.venv
+__pycache__/
+*.py[codz]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+*.log
+db.sqlite3
+/media/
+.env
+
+# Frontend
+/frontend/node_modules/
+/frontend/.next/
+/frontend/out/
+/frontend/.vercel
+/frontend/tsconfig.tsbuildinfo
+/frontend/logs/
+/frontend/dev.log
+/frontend/dev.log.err
+
+# IDE / local
+.idea/
+.vscode/
+.run/
+
+# Local secrets / junk
+cookies.txt
+*.tmp
+.env.local
+
+.coverage
+
+
+# stray local deploy files
+/deploy/nginx.conf
+/deploy/nginx-ssl.conf
+/entrypoint.backend.sh

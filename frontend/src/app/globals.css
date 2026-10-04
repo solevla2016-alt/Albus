@@ -1,0 +1,205 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #ffffff;
+    --bg-secondary: #f8fafc;
+    --bg-tertiary: #f1f5f9;
+    --bg-chat: #f0f2f5;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --border-color: #e2e8f0;
+    --border-light: #f1f5f9;
+    --brand-primary: #6366f1;
+    --brand-hover: #4f46e5;
+    --brand-light: #eef2ff;
+    --message-own: #6366f1;
+    --message-own-text: #ffffff;
+    --message-other: #ffffff;
+    --message-other-text: #0f172a;
+    --glass-bg: rgba(255, 255, 255, 0.8);
+    --glass-border: rgba(255, 255, 255, 0.3);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  }
+
+  .dark {
+    --bg-primary: #0f172a;
+    --bg-secondary: #1e293b;
+    --bg-tertiary: #334155;
+    --bg-chat: #0c1222;
+    --text-primary: #f1f5f9;
+    --text-secondary: #cbd5e1;
+    --text-muted: #64748b;
+    --border-color: #1e293b;
+    --border-light: #334155;
+    --brand-primary: #818cf8;
+    --brand-hover: #6366f1;
+    --brand-light: #1e1b4b;
+    --message-own: #4f46e5;
+    --message-own-text: #ffffff;
+    --message-other: #1e293b;
+    --message-other-text: #f1f5f9;
+    --glass-bg: rgba(15, 23, 42, 0.8);
+    --glass-border: rgba(30, 41, 59, 0.3);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+  }
+
+  body {
+    @apply bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Анимированная aurora-подложка */
+  .chat-app::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(600px 400px at 15% 10%, rgba(99, 102, 241, 0.18), transparent 60%),
+      radial-gradient(700px 500px at 85% 15%, rgba(236, 72, 153, 0.12), transparent 60%),
+      radial-gradient(900px 600px at 50% 110%, rgba(34, 211, 238, 0.12), transparent 60%);
+    transition: opacity 0.4s;
+  }
+
+  .chat-app::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes aurora-drift {
+    0% { transform: translateX(0) translateY(0) scale(1); }
+    50% { transform: translateX(40px) translateY(-20px) scale(1.05); }
+    100% { transform: translateX(0) translateY(0) scale(1); }
+  }
+
+  .chat-app::before {
+    animation: aurora-drift 24s ease-in-out infinite;
+  }
+}
+
+@layer components {
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--glass-border);
+  }
+
+  .glass-strong {
+    background: var(--glass-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--glass-border);
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+    border-radius: 3px;
+  }
+
+  .input-base {
+    @apply w-full rounded-xl border border-[var(--border-color)] bg-[var(--bg-secondary)]
+           px-4 py-3 text-[var(--text-primary)] placeholder-[var(--text-muted)]
+           transition-all duration-200
+           focus:border-[var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-brand-500/20;
+  }
+
+  .btn-primary {
+    @apply rounded-xl bg-[var(--brand-primary)] px-6 py-3 font-medium text-white
+           transition-all duration-200
+           hover:bg-[var(--brand-hover)] hover:shadow-lg hover:shadow-black/10
+           active:scale-[0.98]
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply rounded-lg px-3 py-2 text-[var(--text-secondary)]
+           transition-colors duration-150
+           hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)];
+  }
+}
+
+@layer base {
+  /* безопасные зоны: чёлка и home indicator на iPhone, вырез на Android */
+  .safe-t {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .safe-b {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .safe-x {
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  .safe-t-nav {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 0.5rem);
+  }
+  .safe-b-nav {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
+  /* правая панель (участники) на landscape-iPhone уходит под чёлку */
+  .safe-r {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+
+  /* убираем подсветку тапа на мобильных, но оставляем для a11y с клавиатуры */
+  button,
+  a,
+  input,
+  textarea,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* корректный размер текста в полях ввода на iOS (иначе зумит страницу) */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
