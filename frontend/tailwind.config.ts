@@ -5,18 +5,21 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Albus brand ramp, derived from the red on the logo card (#9a3c37).
+        // Kept desaturated on purpose: it reads as brick/terracotta rather than
+        // alarm red, so it can carry the UI accents without shouting.
         brand: {
-          50: "#eef2ff",
-          100: "#e0e7ff",
-          200: "#c7d2fe",
-          300: "#a5b4fc",
-          400: "#818cf8",
-          500: "#6366f1",
-          600: "#4f46e5",
-          700: "#4338ca",
-          800: "#3730a3",
-          900: "#312e81",
-          950: "#1e1b4b",
+          50: "#fbf5f4",
+          100: "#f6e6e4",
+          200: "#eac8c4",
+          300: "#d9a09a",
+          400: "#c4736b",
+          500: "#ae534b",
+          600: "#9a3c37",
+          700: "#7c2f2b",
+          800: "#5d2320",
+          900: "#3e1715",
+          950: "#240d0c",
         },
       },
       animation: {

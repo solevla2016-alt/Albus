@@ -42,8 +42,8 @@ export default function LOGINPage() {
   return (
     <div className="relative flex min-h-dvh items-center justify-center overflow-x-hidden overflow-y-auto px-4 py-6">
       <div className="pointer-events-none absolute -left-24 -top-24 h-80 w-80 rounded-full bg-brand-400/20 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-fuchsia-400/15 blur-3xl" />
-      <div className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-32 -right-24 h-96 w-96 rounded-full bg-brand-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute left-1/2 top-1/3 h-72 w-72 -translate-x-1/2 rounded-full bg-brand-300/15 blur-3xl" />
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-brand-50 via-transparent to-brand-100/50 dark:from-brand-950 dark:to-transparent" />
 
       <button
@@ -61,8 +61,8 @@ export default function LOGINPage() {
         className="glass-strong w-full max-w-md rounded-3xl p-8 shadow-lg"
       >
         <div className="mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-md">
-            <img src="/logo.png" alt="Albus" className="h-full w-full object-cover" />
+          <div className="mb-4 h-16 w-16 overflow-hidden rounded-2xl shadow-md">
+            <img src="/logo-card.png" alt="Albus" className="h-full w-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold">Albus</h1>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">

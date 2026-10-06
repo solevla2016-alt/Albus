@@ -118,7 +118,7 @@ export default function ChatPage() {
           x: sidebarOpen ? 0 : "-100%",
         }}
         transition={{ duration: 0.2 }}
-        className="absolute z-20 h-full w-full bg-white/95 backdrop-blur-lg dark:bg-slate-900/95 md:hidden"
+        className="absolute z-20 h-full w-full bg-[var(--bg-primary)]/95 backdrop-blur-lg md:hidden"
       >
         <Sidebar onClose={() => setSidebarOpen(false)} />
       </motion.div>

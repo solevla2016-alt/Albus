@@ -680,7 +680,7 @@ onClick={async () => {
                       "flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl text-sm font-bold",
                       isDirect && "rounded-full",
                       isDirect
-                        ? "bg-gradient-to-br from-pink-400 to-rose-600 text-white"
+                        ? "bg-gradient-to-br from-brand-400 to-brand-700 text-white"
                         : "bg-gradient-to-br from-brand-400 to-brand-600 text-white"
                     )}
                   >

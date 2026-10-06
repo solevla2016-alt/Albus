@@ -7,7 +7,7 @@ export function EmptyState({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   return (
     <div className="relative flex h-full flex-col items-center justify-center overflow-hidden p-6 text-center">
       <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-[var(--brand-primary)]/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-pink-500/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-brand-500/10 blur-3xl" />
 
       <button
         onClick={onOpenSidebar}
@@ -22,7 +22,7 @@ export function EmptyState({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         className="relative mb-5"
       >
         <div className="absolute inset-0 rounded-3xl bg-[var(--brand-primary)]/30 blur-xl" />
-        <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-500 to-indigo-700 text-white shadow-lg shadow-brand-500/30">
+        <div className="relative flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-lg shadow-brand-500/30">
           <MessagesSquare size={34} />
         </div>
       </motion.div>

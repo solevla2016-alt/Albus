@@ -93,8 +93,8 @@ export default function RegisterPage() {
         className="glass-strong w-full max-w-md rounded-3xl p-8 shadow-lg"
       >
         <div className="mb-8 flex flex-col items-center">
-          <div className="mb-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-white shadow-md">
-            <img src="/logo.png" alt="Albus" className="h-full w-full object-cover" />
+          <div className="mb-4 h-16 w-16 overflow-hidden rounded-2xl shadow-md">
+            <img src="/logo-card.png" alt="Albus" className="h-full w-full object-cover" />
           </div>
           <h1 className="text-2xl font-bold">Присоединяйся к Albus</h1>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">

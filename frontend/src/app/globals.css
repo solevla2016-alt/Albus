@@ -4,51 +4,57 @@
 
 @layer base {
   :root {
-    --bg-primary: #ffffff;
-    --bg-secondary: #f8fafc;
-    --bg-tertiary: #f1f5f9;
-    --bg-chat: #f0f2f5;
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --text-muted: #94a3b8;
-    --border-color: #e2e8f0;
-    --border-light: #f1f5f9;
-    --brand-primary: #6366f1;
-    --brand-hover: #4f46e5;
-    --brand-light: #eef2ff;
-    --message-own: #6366f1;
+    /* Albus light theme.
+       The neutrals are warm rather than slate so the brand red sits in the
+       same colour family, and red stays confined to accents: active nav, own
+       bubble, primary button, links, unread badge. */
+    --bg-primary: #fcfaf9;
+    --bg-secondary: #f6f1ef;
+    --bg-tertiary: #ede6e3;
+    --bg-chat: #f3edea;
+    --text-primary: #1c1513;
+    --text-secondary: #5a4b47;
+    --text-muted: #9c8b86;
+    --border-color: #e6dcd8;
+    --border-light: #f0e8e5;
+    --brand-primary: #9a3c37;
+    --brand-hover: #7c2f2b;
+    --brand-light: #f6e6e4;
+    --message-own: #9a3c37;
     --message-own-text: #ffffff;
     --message-other: #ffffff;
-    --message-other-text: #0f172a;
-    --glass-bg: rgba(255, 255, 255, 0.8);
-    --glass-border: rgba(255, 255, 255, 0.3);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    --message-other-text: #1c1513;
+    --glass-bg: rgba(252, 250, 249, 0.82);
+    --glass-border: rgba(230, 220, 216, 0.7);
+    --shadow-sm: 0 1px 2px rgba(60, 30, 25, 0.06);
+    --shadow-md: 0 4px 6px -1px rgba(60, 30, 25, 0.1);
+    --shadow-lg: 0 10px 15px -3px rgba(60, 30, 25, 0.12);
   }
 
   .dark {
-    --bg-primary: #0f172a;
-    --bg-secondary: #1e293b;
-    --bg-tertiary: #334155;
-    --bg-chat: #0c1222;
-    --text-primary: #f1f5f9;
-    --text-secondary: #cbd5e1;
-    --text-muted: #64748b;
-    --border-color: #1e293b;
-    --border-light: #334155;
-    --brand-primary: #818cf8;
-    --brand-hover: #6366f1;
-    --brand-light: #1e1b4b;
-    --message-own: #4f46e5;
+    /* Warm charcoal rather than blue-black, so the red accent harmonises with
+       the surfaces instead of fighting a cold background. */
+    --bg-primary: #17110f;
+    --bg-secondary: #201917;
+    --bg-tertiary: #2c2320;
+    --bg-chat: #130e0d;
+    --text-primary: #f5efed;
+    --text-secondary: #d6c9c5;
+    --text-muted: #9a8985;
+    --border-color: #2e2523;
+    --border-light: #3a2f2c;
+    --brand-primary: #d98c84;
+    --brand-hover: #e5a79f;
+    --brand-light: #3a2320;
+    --message-own: #a84f47;
     --message-own-text: #ffffff;
-    --message-other: #1e293b;
-    --message-other-text: #f1f5f9;
-    --glass-bg: rgba(15, 23, 42, 0.8);
-    --glass-border: rgba(30, 41, 59, 0.3);
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+    --message-other: #241c1a;
+    --message-other-text: #f5efed;
+    --glass-bg: rgba(23, 17, 15, 0.82);
+    --glass-border: rgba(58, 47, 44, 0.7);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55);
   }
 
   body {
@@ -56,17 +62,26 @@
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 
-  /* Анимированная aurora-подложка */
+  /* Мягкая тёплая подложка. Раньше здесь был сине-розово-циановый aurora,
+     который спорил с красным брендом; теперь тона чуть теплее и заметно
+     слабее, чтобы красный оставался акцентом, а не фоном. */
   .chat-app::before {
     content: "";
     position: fixed;
     inset: 0;
     z-index: -2;
     background:
-      radial-gradient(600px 400px at 15% 10%, rgba(99, 102, 241, 0.18), transparent 60%),
-      radial-gradient(700px 500px at 85% 15%, rgba(236, 72, 153, 0.12), transparent 60%),
-      radial-gradient(900px 600px at 50% 110%, rgba(34, 211, 238, 0.12), transparent 60%);
+      radial-gradient(620px 420px at 12% 8%, rgba(154, 60, 55, 0.10), transparent 62%),
+      radial-gradient(700px 500px at 88% 12%, rgba(196, 115, 107, 0.07), transparent 62%),
+      radial-gradient(900px 600px at 50% 112%, rgba(154, 60, 55, 0.06), transparent 62%);
     transition: opacity 0.4s;
+  }
+
+  .dark .chat-app::before {
+    background:
+      radial-gradient(620px 420px at 12% 8%, rgba(196, 115, 107, 0.10), transparent 62%),
+      radial-gradient(700px 500px at 88% 12%, rgba(154, 60, 55, 0.08), transparent 62%),
+      radial-gradient(900px 600px at 50% 112%, rgba(154, 60, 55, 0.06), transparent 62%);
   }
 
   .chat-app::after {
@@ -76,9 +91,15 @@
     z-index: -1;
     pointer-events: none;
     background-image:
-      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+      linear-gradient(rgba(90, 75, 71, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(90, 75, 71, 0.035) 1px, transparent 1px);
     background-size: 44px 44px;
+  }
+
+  .dark .chat-app::after {
+    background-image:
+      linear-gradient(rgba(214, 201, 197, 0.028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(214, 201, 197, 0.028) 1px, transparent 1px);
   }
 }
 
