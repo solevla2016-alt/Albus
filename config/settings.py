@@ -174,7 +174,10 @@ GIGACHAT_CLIENT_ID = os.getenv("GIGACHAT_CLIENT_ID", "")
 GIGACHAT_CLIENT_SECRET = os.getenv("GIGACHAT_CLIENT_SECRET", "")
 GIGACHAT_USERNAME = os.getenv("GIGACHAT_USERNAME", "")
 GIGACHAT_PASSWORD = os.getenv("GIGACHAT_PASSWORD", "")
-GIGACHAT_MODEL = os.getenv("GIGACHAT_MODEL", "GigaChat-Pro:latest")
+# The default matters: an API key issued by the Sber developer console answers
+# "No such model" for the old GigaChat-Pro:latest / GigaChat-Pro names, which
+# made the assistant silently fall back to its "unavailable" reply.
+GIGACHAT_MODEL = os.getenv("GIGACHAT_MODEL", "GigaChat-2-Pro")
 GIGACHAT_SCOPE = os.getenv("GIGACHAT_SCOPE", "GIGACHAT_API_PERS")
 GIGACHAT_AUTH_URL = os.getenv("GIGACHAT_AUTH_URL", "https://ngw.devices.sberbank.ru:9443/api/v2/oauth")
 GIGACHAT_BASE_URL = os.getenv("GIGACHAT_BASE_URL", "https://gigachat.devices.sberbank.ru/api/v1")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,7 +13,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from rest_framework import status
 
-from chat import permissions
+from chat import ai_service, permissions
 from chat.ai_service import ask_gigachat, build_history, get_ai_answer
 from chat.consumers import ChatConsumer
 from chat.models import ChatRoom, Message, Reaction, RoomBan, Server
@@ -282,6 +283,13 @@ class TestBanApi:
 
 
 class TestAiService:
+    @pytest.fixture(autouse=True)
+    def _clear_token_cache(self):
+        """The token cache is module level, so it would leak between tests."""
+        ai_service._token_cache = None
+        yield
+        ai_service._token_cache = None
+
     async def test_build_history_shape(self):
         raw = [{"message": "q", "username": "u", "is_ai": False}]
         h = build_history(raw)
@@ -306,6 +314,74 @@ class TestAiService:
         settings.GIGACHAT_PASSWORD = ""
         result = await ask_gigachat("test", [])
         assert result is None
+
+    async def test_token_is_cached_between_calls(self, settings):
+        settings.GIGACHAT_CLIENT_ID = "id"
+        settings.GIGACHAT_CLIENT_SECRET = "secret"
+
+        calls = []
+
+        def _resp():
+            return SimpleNamespace(status_code=200, json=lambda: {"access_token": "tok-1"})
+
+        class _FakeClient:
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def post(self, *args, **kwargs):
+                calls.append(1)
+                return _resp()
+
+        with patch("chat.ai_service.httpx.AsyncClient", _FakeClient):
+            first = await ai_service._gigachat_token()
+            second = await ai_service._gigachat_token()
+
+        assert first == "tok-1"
+        assert second == "tok-1"
+        # one OAuth round trip, not one per question
+        assert len(calls) == 1
+
+    async def test_expired_token_is_refetched(self, settings):
+        settings.GIGACHAT_CLIENT_ID = "id"
+        settings.GIGACHAT_CLIENT_SECRET = "secret"
+
+        issued = []
+
+        def _resp(token):
+            return SimpleNamespace(
+                status_code=200, json=lambda: {"access_token": token}
+            )
+
+        class _FakeClient:
+            def __init__(self, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def post(self, *args, **kwargs):
+                token = f"tok-{len(issued)}"
+                issued.append(token)
+                return _resp(token)
+
+        with patch("chat.ai_service.httpx.AsyncClient", _FakeClient):
+            first = await ai_service._gigachat_token()
+            # pretend the cached entry has already expired
+            ai_service._token_cache = (first, time.monotonic() - 1)
+            second = await ai_service._gigachat_token()
+
+        assert first == "tok-0"
+        assert second == "tok-1"
+        assert len(issued) == 2
 
     async def test_ask_gigachat_success(self, settings):
         settings.GIGACHAT_CLIENT_ID = "id"

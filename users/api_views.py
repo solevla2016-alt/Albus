@@ -430,9 +430,15 @@ def password_reset_request_view(request: Request) -> Response:
     if not email:
         return Response({"error": "Укажите email"}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        user = User.objects.get(email__iexact=email)
-    except User.DoesNotExist:
+    # .get() raised MultipleObjectsReturned as soon as two accounts shared an
+    # email, turning the whole endpoint into a 500. Registration does not
+    # enforce email uniqueness, so take the oldest match instead.
+    user = (
+        User.objects.filter(email__iexact=email)
+        .order_by("id")
+        .first()
+    )
+    if user is None:
         return Response({"error": "Пользователь с таким email не найден"}, status=status.HTTP_404_NOT_FOUND)
 
     PasswordResetToken.objects.filter(user=user, used=False).update(used=True)

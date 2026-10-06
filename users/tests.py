@@ -376,6 +376,37 @@ class TestPasswordReset:
         resp = api_client.post(PASSWORD_RESET_REQUEST_URL, {}, format="json")
         assert resp.status_code == 400
 
+    def test_duplicate_email_does_not_500(self, api_client, db):
+        """Registration does not enforce unique emails, so .get() used to raise
+        MultipleObjectsReturned and turn this endpoint into a 500."""
+        from .models import PasswordResetToken
+
+        get_user_model().objects.create_user(
+            username="dupe-a", password="pass12345", email="shared@example.com"
+        )
+        get_user_model().objects.create_user(
+            username="dupe-b", password="pass12345", email="shared@example.com"
+        )
+
+        sent = {}
+        monkey = pytest.MonkeyPatch()
+        try:
+            monkey.setattr(
+                "users.api_views._send_reset_email",
+                lambda to, url, username: sent.update(to=to),
+            )
+            resp = api_client.post(
+                PASSWORD_RESET_REQUEST_URL,
+                {"email": "shared@example.com"},
+                format="json",
+            )
+        finally:
+            monkey.undo()
+
+        assert resp.status_code == 200
+        assert sent["to"] == "shared@example.com"
+        assert PasswordResetToken.objects.count() == 1
+
     def test_confirm_sets_new_password(self, api_client, user, monkeypatch):
         from django.utils.http import urlsafe_base64_encode
 

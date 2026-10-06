@@ -3,6 +3,7 @@
 import asyncio
 import base64
 import sys
+import time
 import uuid
 from typing import Any
 
@@ -25,9 +26,23 @@ AI_SYSTEM_PROMPT = (
 )
 
 
+# GigaChat access tokens live about 30 minutes. Fetching one per question cost a
+# full OAuth round trip on every AI message and walked straight into the
+# endpoint's rate limit, which then made the assistant answer "unavailable".
+_TOKEN_TTL_SECONDS = 25 * 60
+_token_cache: tuple[str, float] | None = None
+
+
 async def _gigachat_token() -> str | None:
     """Получает OAuth-токен GigaChat. Поддерживает ключи client_id/client_secret
     и вход по логину/паролю Сбер ID."""
+    global _token_cache
+
+    if _token_cache is not None:
+        cached, expires_at = _token_cache
+        if expires_at > time.monotonic():
+            return cached
+
     client_id = settings.GIGACHAT_CLIENT_ID
     client_secret = settings.GIGACHAT_CLIENT_SECRET
     username = settings.GIGACHAT_USERNAME
@@ -58,7 +73,10 @@ async def _gigachat_token() -> str | None:
             return None
         data = resp.json()
         token = data.get("access_token")
-        return token or None
+        if not token:
+            return None
+        _token_cache = (token, time.monotonic() + _TOKEN_TTL_SECONDS)
+        return token
     except Exception as exc:
         print(f"[AI] GigaChat auth error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return None
