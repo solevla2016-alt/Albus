@@ -1,0 +1,47 @@
+albuschat.ru, www.albuschat.ru {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	@private path /docs /docs/* /redoc /redoc/* /openapi.json
+	respond @private 404
+
+	# Everything the Django process serves. The Permissions-Policy from the shop
+	# block is deliberately NOT reused: it sets camera=() and microphone=(), which
+	# would break the WebRTC calls and screen sharing.
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle /ws/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle /media/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle /static/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	# Django admin. Without this it falls through to Next.js and the owner cannot
+	# manage users, rooms or bug reports.
+	handle /admin* {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+
+	log {
+		output file /var/log/caddy/albus-access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+		format json
+	}
+}
