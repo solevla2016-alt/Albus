@@ -8,12 +8,10 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 
 django_asgi_app = get_asgi_application()
 
-# Daphne is not `runserver`, so Django serves no static files here. Without this
-# the Django admin renders unstyled and /static/* answers 404.
-from whitenoise import WhiteNoiseMiddleware  # noqa: E402
-
-django_asgi_app = WhiteNoiseMiddleware(django_asgi_app)
-
+# Note: Daphne is not `runserver`, so Django serves no static files here, and
+# WhiteNoise is no help because 6.x is WSGI only (no ASGI interface). The
+# collectstatic output is bind mounted to the host and served by Caddy instead;
+# see deploy/Caddyfile.albus and the backend volumes in docker-compose.vds.yml.
 from chat.routing import websocket_urlpatterns  # noqa: E402
 
 application = ProtocolTypeRouter(

@@ -88,6 +88,15 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - backend_media:/app/media
+      # Daphne serves no static files, and WhiteNoise is WSGI only, so the
+      # collectstatic output is bind mounted for the reverse proxy to serve.
+      - /opt/albus/static:/app/staticfiles
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/auth/csrf/', timeout=5)\""]
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 40s
 
   frontend:
     image: albus-frontend:latest

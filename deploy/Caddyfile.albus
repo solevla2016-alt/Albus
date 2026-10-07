@@ -24,8 +24,13 @@ albuschat.ru, www.albuschat.ru {
 	handle /media/* {
 		reverse_proxy 127.0.0.1:8000
 	}
-	handle /static/* {
-		reverse_proxy 127.0.0.1:8000
+	# collectstatic output. Daphne serves no static files and WhiteNoise is WSGI
+	# only, so the files are bind mounted to /opt/albus/static and served here.
+	# handle_path strips the /static prefix, so /static/admin/css/base.css
+	# resolves to /opt/albus/static/admin/css/base.css.
+	handle_path /static/* {
+		root * /opt/albus/static
+		file_server
 	}
 	# Django admin. Without this it falls through to Next.js and the owner cannot
 	# manage users, rooms or bug reports.
