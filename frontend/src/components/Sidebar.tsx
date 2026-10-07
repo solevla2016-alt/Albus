@@ -753,7 +753,7 @@ onClick={async () => {
                 />
               ) : (
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-xs font-bold text-white">
-                  {getInitials(user?.username ?? "JW")}
+                  {getInitials(user?.username ?? "Albus")}
                 </div>
               )}
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-[var(--bg-primary)]" />
@@ -781,7 +781,7 @@ onClick={async () => {
                     />
                     {!user?.avatar && (
                       <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-sm font-bold text-white">
-                        {getInitials(user?.username ?? "JW")}
+                        {getInitials(user?.username ?? "Albus")}
                       </div>
                     )}
                     <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-[9px] font-semibold text-white md:opacity-0 md:transition-opacity md:hover:opacity-100">

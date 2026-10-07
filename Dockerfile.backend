@@ -18,6 +18,13 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 COPY . .
 
+# Sber's GigaChat endpoints are issued by "Russian Trusted Sub CA" under the
+# Ministry of Digital Development root, which Debian's ca-certificates does not
+# ship. Without this the TLS handshake aborts with error 19 and the AI feature
+# can only work with verification disabled.
+COPY certs/russian-trusted-root-ca.crt /usr/local/share/ca-certificates/russian-trusted-root-ca.crt
+RUN update-ca-certificates
+
 EXPOSE 8000
 
 CMD ["sh", "-c", "python manage.py collectstatic --noinput && python manage.py migrate --noinput && python manage.py ensure_ai_chat && daphne -b 0.0.0.0 -p 8000 config.asgi:application"]

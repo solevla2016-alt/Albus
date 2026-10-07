@@ -315,6 +315,21 @@ class TestAiService:
         result = await ask_gigachat("test", [])
         assert result is None
 
+    async def test_ssl_context_is_used_when_verification_on(self, settings):
+        """httpx verifies against certifi, which lacks the Russian root that
+        Sber's endpoints are issued under, so the context must be explicit."""
+        import ssl
+
+        settings.GIGACHAT_VERIFY_SSL = True
+        context = ai_service._ssl_verify()
+        assert isinstance(context, ssl.SSLContext)
+        # the system store (where the CA is installed) must be merged in
+        assert context.cert_store_stats()["x509_ca"] > 0
+
+    async def test_ssl_verify_returns_false_when_disabled(self, settings):
+        settings.GIGACHAT_VERIFY_SSL = False
+        assert ai_service._ssl_verify() is False
+
     async def test_token_is_cached_between_calls(self, settings):
         settings.GIGACHAT_CLIENT_ID = "id"
         settings.GIGACHAT_CLIENT_SECRET = "secret"

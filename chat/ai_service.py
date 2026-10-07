@@ -2,6 +2,7 @@
 
 import asyncio
 import base64
+import ssl
 import sys
 import time
 import uuid
@@ -31,6 +32,35 @@ AI_SYSTEM_PROMPT = (
 # endpoint's rate limit, which then made the assistant answer "unavailable".
 _TOKEN_TTL_SECONDS = 25 * 60
 _token_cache: tuple[str, float] | None = None
+
+_SYSTEM_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt"
+
+
+def _ssl_verify() -> ssl.SSLContext | bool:
+    """Контекст TLS для GigaChat.
+
+    httpx проверяет сертификаты по bundle certifi, где нет российского корневого
+    CA Минцифры, которым выпущены эндпоинты Сбера: рукопожатие падало с
+    ошибкой 19. Корень прописан в образ, поэтому системное хранилище подходит —
+    но оно не содержит ничего из certifi, так что берём оба.
+    """
+    if not settings.GIGACHAT_VERIFY_SSL:
+        return False
+
+    context = ssl.create_default_context()
+    try:
+        import certifi
+
+        context.load_verify_locations(cafile=certifi.where())
+    except Exception as exc:  # pragma: no cover - certifi ships with httpx
+        print(f"[AI] certifi bundle unavailable: {exc}", file=sys.stderr)
+
+    try:
+        context.load_verify_locations(cafile=_SYSTEM_CA_BUNDLE)
+    except OSError as exc:  # pragma: no cover - non-Debian base image
+        print(f"[AI] system CA bundle {exc}", file=sys.stderr)
+
+    return context
 
 
 async def _gigachat_token() -> str | None:
@@ -62,7 +92,9 @@ async def _gigachat_token() -> str | None:
         "RqUID": str(uuid.uuid4()),
     }
     try:
-        async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS, verify=settings.GIGACHAT_VERIFY_SSL) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.AI_TIMEOUT_SECONDS, verify=_ssl_verify()
+        ) as client:
             resp = await client.post(
                 settings.GIGACHAT_AUTH_URL,
                 headers=headers,
@@ -107,7 +139,9 @@ async def ask_gigachat(prompt: str, history: list[dict[str, Any]]) -> str | None
     }
 
     try:
-        async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS, verify=settings.GIGACHAT_VERIFY_SSL) as client:
+        async with httpx.AsyncClient(
+            timeout=settings.AI_TIMEOUT_SECONDS, verify=_ssl_verify()
+        ) as client:
             for attempt in range(2):
                 resp = await client.post(url, json=payload, headers=headers)
                 if resp.status_code == 200:
