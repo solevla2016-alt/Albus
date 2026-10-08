@@ -7,6 +7,7 @@ import {
   BookUser,
   Bug,
   ChevronDown,
+  Cookie,
   FileText,
   Home,
   Link2,
@@ -18,10 +19,11 @@ import {
   Search,
   ShieldCheck,
   Sun,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
-import { API_URL, apiFetch, getServerInvite, mediaUrl, uploadAvatar } from "@/lib/api";
+import { API_URL, apiFetch, deleteAccountApi, getServerInvite, mediaUrl, uploadAvatar } from "@/lib/api";
 import { useTheme } from "@/lib/useTheme";
 import { useChatStore } from "@/lib/store";
 import type { ChatRoom, Server, User } from "@/lib/types";
@@ -78,6 +80,10 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
   const [inviteMsg, setInviteMsg] = useState("");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const openProfile = () => {
     setProfileMsg("");
@@ -85,6 +91,19 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
     setBirthDraft(user?.birth_date ?? "");
     setPrivacyDraft(user?.message_privacy ?? "everyone");
     setProfileOpen((v) => !v);
+  };
+
+  const handleDeleteAccount = async () => {
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await deleteAccountApi(deletePassword);
+      // The server ends the session, so a reload lands on the login page.
+      window.location.assign("/login");
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Не удалось удалить аккаунт");
+      setDeleteBusy(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -859,14 +878,33 @@ onClick={async () => {
                   <FileText size={15} />
                   Правила использования
                 </Link>
-                <Link
+<Link
                   href="/privacy"
                   target="_blank"
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                 >
                   <ShieldCheck size={15} />
-                  Обработка персональных данных
+                  �������� �������� �� �������ʲ� �� �쭮�˙�Ѳ: �? ���Ѳ�Ң���
                 </Link>
+                <Link
+                  href="/cookies"
+                  target="_blank"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                >
+                  <Cookie size={15} />
+                  ���������� ������ cookie
+                </Link>
+                <button
+                  onClick={() => {
+                    setDeleteOpen(true);
+                    setDeleteError("");
+                    setDeletePassword("");
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
+                >
+                  <Trash2 size={15} />
+                  ������� ��է��� ��
+                </button>
                 <button
                   onClick={toggleTheme}
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
@@ -888,6 +926,47 @@ onClick={async () => {
       </div>
 
       {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
+
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="glass-strong w-full max-w-sm rounded-2xl p-5 shadow-lg">
+            <h3 className="text-base font-semibold">Удалить учётную запись?</h3>
+            <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">
+              Профиль, аватар и статус будут удалены. Ваши сообщения останутся в
+              чатах, но авторство станет анонимным — это предусмотрено политикой
+              обработки персональных данных.
+            </p>
+            <input
+              type="password"
+              value={deletePassword}
+              onChange={(e) => setDeletePassword(e.target.value)}
+              placeholder="Подтвердите пароль"
+              className="input-base mt-4"
+              autoComplete="current-password"
+            />
+            {deleteError && (
+              <p className="mt-2 text-xs text-red-600 dark:text-red-400">{deleteError}</p>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteOpen(false)}
+                className="btn-ghost flex-1"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deleteBusy || !deletePassword}
+                className="flex-1 rounded-xl bg-red-600 px-4 py-2 font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteBusy ? "Удаляем…" : "Удалить"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

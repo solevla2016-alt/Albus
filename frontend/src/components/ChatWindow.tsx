@@ -552,10 +552,10 @@ export function ChatWindow() {
           sendMessage(text, replyTarget?.id, attachment);
           setReplyTarget(null);
         }}
-        onSendAiRequest={(prompt) => {
-          sendAiRequest(prompt);
-        }}
-        roomId={activeRoom.id}
+onSendAiRequest={(prompt) => {
+   sendAiRequest(prompt);
+   }}
+   roomId={activeRoom.id}
         onTyping={startTyping}
         replyTarget={replyTarget}
         onCancelReply={() => setReplyTarget(null)}

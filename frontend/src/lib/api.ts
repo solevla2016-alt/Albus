@@ -195,6 +195,14 @@ export async function deleteContactApi<T>(roomId: number): Promise<T> {
   return apiFetch<T>(`/chat/rooms/${roomId}/leave/`, { method: "POST" });
 }
 
+/** Right to erasure under 152-ФЗ: the password is verified server side. */
+export async function deleteAccountApi(password: string): Promise<void> {
+  await apiFetch("/auth/delete-account/", {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}
+
 export async function searchMessages<T>(roomId: number, q: string): Promise<T> {
   const res = await fetch(
     `${API_BASE}/chat/rooms/${roomId}/search/?q=${encodeURIComponent(q)}`,

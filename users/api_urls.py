@@ -5,6 +5,7 @@ from .api_views import (
     consent_accept_view,
     consent_view,
     csrf_view,
+    delete_account_view,
     login_view,
     logout_view,
     me_view,
@@ -28,6 +29,7 @@ urlpatterns = [
     path("profile/", profile_update_view, name="api_profile"),
     path("avatar/", avatar_upload_view, name="api_avatar"),
     path("set-role/", set_role_view, name="api_set_role"),
-    path("password-reset/request/", password_reset_request_view, name="api_password_reset_request"),
+    path("delete-account/", delete_account_view, name="api_delete_account"),
+path("password-reset/request/", password_reset_request_view, name="api_password_reset_request"),
     path("password-reset/confirm/", password_reset_confirm_view, name="api_password_reset_confirm"),
 ]

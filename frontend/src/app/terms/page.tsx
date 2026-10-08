@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 
+import { LegalFooter } from "@/components/LegalFooter";
+
 const SECTIONS = [
   {
     title: "1. Общие положения",
@@ -114,6 +116,7 @@ export default function TermsPage() {
           </p>
         </div>
       </article>
-    </main>
+        <LegalFooter />
+      </main>
   );
 }

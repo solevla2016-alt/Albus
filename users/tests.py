@@ -2,8 +2,11 @@ from datetime import timedelta
 from io import BytesIO
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+
+from .models import ConsentRecord
 
 User = get_user_model()
 
@@ -32,8 +35,8 @@ class TestAuthApi:
             REGISTER_URL,
             {
                 "username": "newbie",
-                "password": "secret123",
-                "password2": "secret123",
+                "password": "Zx9!mQw2Lp",
+                "password2": "Zx9!mQw2Lp",
                 "accept_terms": True,
                 "accept_privacy": True,
             },
@@ -51,8 +54,8 @@ class TestAuthApi:
             REGISTER_URL,
             {
                 "username": "consented",
-                "password": "secret123",
-                "password2": "secret123",
+                "password": "Zx9!mQw2Lp",
+                "password2": "Zx9!mQw2Lp",
                 "accept_terms": True,
                 "accept_privacy": True,
             },
@@ -70,8 +73,8 @@ class TestAuthApi:
             REGISTER_URL,
             {
                 "username": "noterms",
-                "password": "secret123",
-                "password2": "secret123",
+                "password": "Zx9!mQw2Lp",
+                "password2": "Zx9!mQw2Lp",
                 "accept_privacy": True,
             },
             format="json",
@@ -84,8 +87,8 @@ class TestAuthApi:
             REGISTER_URL,
             {
                 "username": "noprivacy",
-                "password": "secret123",
-                "password2": "secret123",
+                "password": "Zx9!mQw2Lp",
+                "password2": "Zx9!mQw2Lp",
                 "accept_terms": True,
             },
             format="json",
@@ -118,7 +121,7 @@ class TestAuthApi:
     def test_register_requires_passwords(self, api_client):
         resp = api_client.post(
             REGISTER_URL,
-            {"username": "newbie", "password": "secret123"},
+            {"username": "newbie", "password": "Zx9!mQw2Lp"},
             format="json",
         )
         assert resp.status_code == 400
@@ -126,7 +129,7 @@ class TestAuthApi:
     def test_register_password_mismatch(self, api_client):
         resp = api_client.post(
             REGISTER_URL,
-            {"username": "newbie", "password": "secret123", "password2": "other123"},
+            {"username": "newbie", "password": "Zx9!mQw2Lp", "password2": "other123"},
             format="json",
         )
         assert resp.status_code == 400
@@ -142,7 +145,7 @@ class TestAuthApi:
     def test_register_duplicate_username(self, api_client, user):
         resp = api_client.post(
             REGISTER_URL,
-            {"username": user.username, "password": "secret123", "password2": "secret123"},
+            {"username": user.username, "password": "Zx9!mQw2Lp", "password2": "Zx9!mQw2Lp"},
             format="json",
         )
         assert resp.status_code == 400
@@ -150,7 +153,7 @@ class TestAuthApi:
     def test_login_success(self, api_client, user):
         resp = api_client.post(
             LOGIN_URL,
-            {"username": user.username, "password": "pass12345"},
+            {"username": user.username, "password": "Xk7pQm2vRt"},
             format="json",
         )
         assert resp.status_code == 200
@@ -382,10 +385,10 @@ class TestPasswordReset:
         from .models import PasswordResetToken
 
         get_user_model().objects.create_user(
-            username="dupe-a", password="pass12345", email="shared@example.com"
+            username="dupe-a", password="Xk7pQm2vRt", email="shared@example.com"
         )
         get_user_model().objects.create_user(
-            username="dupe-b", password="pass12345", email="shared@example.com"
+            username="dupe-b", password="Xk7pQm2vRt", email="shared@example.com"
         )
 
         sent = {}
@@ -580,3 +583,117 @@ class TestAuthHardening:
 
         for view in (register_view, login_view, password_reset_request_view):
             assert view.cls.throttle_scope == "auth"
+
+
+@pytest.mark.django_db()
+class TestConsentAuditTrail:
+    """152-ФЗ evidence: consent has to be provable, not just stored as a flag."""
+
+    def test_registration_writes_a_consent_record(self, api_client):
+        resp = api_client.post(
+            REGISTER_URL,
+            {
+                "username": "audited",
+                "password": "Zx9!mQw2Lp",
+                "password2": "Zx9!mQw2Lp",
+                "email": "audited@example.com",
+                "accept_terms": True,
+                "accept_privacy": True,
+            },
+            format="json",
+        )
+        assert resp.status_code == 201
+        record = ConsentRecord.objects.get(user__username="audited")
+        assert record.source == ConsentRecord.Source.REGISTRATION
+        assert record.privacy_version == settings.PRIVACY_VERSION
+
+    def test_reconsent_appends_instead_of_overwriting(self, api_client, user):
+        api_client.force_authenticate(user=user)
+        for _ in range(3):
+            resp = api_client.post(
+                "/api/auth/consent/accept/",
+                {"accept_terms": True, "accept_privacy": True},
+                format="json",
+            )
+            assert resp.status_code == 200
+        assert ConsentRecord.objects.filter(user=user).count() == 3
+
+    def test_record_captures_ip_and_user_agent(self, api_client, user):
+        api_client.force_authenticate(user=user)
+        api_client.post(
+            "/api/auth/consent/accept/",
+            {"accept_terms": True, "accept_privacy": True},
+            format="json",
+            HTTP_X_FORWARDED_FOR="203.0.113.9, 10.0.0.1",
+            HTTP_USER_AGENT="TestAgent/1.0",
+        )
+        record = ConsentRecord.objects.get(user=user)
+        assert record.ip_address == "203.0.113.9"
+        assert record.user_agent == "TestAgent/1.0"
+
+    def test_partial_consent_is_not_recorded(self, api_client, user):
+        api_client.force_authenticate(user=user)
+        resp = api_client.post(
+            "/api/auth/consent/accept/",
+            {"accept_terms": True, "accept_privacy": False},
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert ConsentRecord.objects.filter(user=user).count() == 0
+
+
+@pytest.mark.django_db()
+class TestDeleteAccount:
+    """Right to erasure. Messages survive, authorship does not."""
+
+    def test_wrong_password_is_refused(self, api_client, user):
+        api_client.force_authenticate(user=user)
+        resp = api_client.post(
+            "/api/auth/delete-account/", {"password": "wrong-password"}, format="json"
+        )
+        assert resp.status_code == 403
+        assert get_user_model().objects.filter(pk=user.pk).exists()
+
+    def test_missing_password_is_refused(self, api_client, user):
+        api_client.force_authenticate(user=user)
+        resp = api_client.post("/api/auth/delete-account/", {}, format="json")
+        assert resp.status_code == 400
+        assert get_user_model().objects.filter(pk=user.pk).exists()
+
+    def test_deletes_user_but_keeps_history_anonymised(self, api_client, user, member):
+        from chat.models import ChatRoom, Message
+
+        room = ChatRoom.objects.create(name="own-room", owner=user, room_type="group")
+        room.members.add(user, member)
+        mine = Message.objects.create(room=room, user=user, text="мой текст")
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.post(
+            "/api/auth/delete-account/",
+            {"password": "Xk7pQm2vRt"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert not get_user_model().objects.filter(pk=user.pk).exists()
+
+        surviving = Message.objects.get(id=mine.id)
+        assert surviving.user is None
+        assert surviving.text == "мой текст"
+
+    def test_room_survives_owner_deletion(self, api_client, user, member):
+        from chat.models import ChatRoom
+
+        room = ChatRoom.objects.create(name="doomed-room", owner=user, room_type="group")
+        room.members.add(user, member)
+
+        api_client.force_authenticate(user=user)
+        resp = api_client.post(
+            "/api/auth/delete-account/",
+            {"password": "Xk7pQm2vRt"},
+            format="json",
+        )
+        assert resp.status_code == 200
+
+        still_there = ChatRoom.objects.get(id=room.id)
+        assert still_there.owner is None
+        assert member in still_there.members.all()

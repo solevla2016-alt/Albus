@@ -1073,7 +1073,7 @@ class TestEnsureAiChatCommand:
         from django.core.management import call_command
 
         ai = User.objects.create_user(
-            username=settings.AI_ASSISTANT_USERNAME, password="pass12345"
+            username=settings.AI_ASSISTANT_USERNAME, password="Xk7pQm2vRt"
         )
         room = ChatRoom.objects.create(
             name=settings.AI_ASSISTANT_USERNAME,
@@ -1158,7 +1158,7 @@ class TestDirectRoomsAreNotShared:
         from django.conf import settings
 
         User.objects.create_user(
-            username=settings.AI_ASSISTANT_USERNAME, password="pass12345"
+            username=settings.AI_ASSISTANT_USERNAME, password="Xk7pQm2vRt"
         )
 
         first = self._create(api_client, owner, settings.AI_ASSISTANT_USERNAME)

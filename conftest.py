@@ -99,32 +99,32 @@ def fake_redis(monkeypatch: pytest.MonkeyPatch) -> FakeRedis:
 
 @pytest.fixture()
 def user(db):
-    return get_user_model().objects.create_user(username="user", password="pass12345")
+    return get_user_model().objects.create_user(username="user", password="Xk7pQm2vRt")
 
 
 @pytest.fixture()
 def owner(db):
-    return get_user_model().objects.create_user(username="owner", password="pass12345")
+    return get_user_model().objects.create_user(username="owner", password="Xk7pQm2vRt")
 
 
 @pytest.fixture()
 def moderator(db):
-    return get_user_model().objects.create_user(username="moderator", password="pass12345", role="moderator")
+    return get_user_model().objects.create_user(username="moderator", password="Xk7pQm2vRt", role="moderator")
 
 
 @pytest.fixture()
 def admin(db):
-    return get_user_model().objects.create_user(username="admin", password="pass12345", role="admin")
+    return get_user_model().objects.create_user(username="admin", password="Xk7pQm2vRt", role="admin")
 
 
 @pytest.fixture()
 def stranger(db):
-    return get_user_model().objects.create_user(username="stranger", password="pass12345")
+    return get_user_model().objects.create_user(username="stranger", password="Xk7pQm2vRt")
 
 
 @pytest.fixture()
 def superuser(db):
-    return get_user_model().objects.create_superuser(username="superuser", password="pass12345")
+    return get_user_model().objects.create_superuser(username="superuser", password="Xk7pQm2vRt")
 
 
 def make_message(room: ChatRoom, author, text: str = "hello") -> Message:
@@ -165,7 +165,7 @@ def dm_room_factory(db):
 
 @pytest.fixture()
 def member(db):
-    return get_user_model().objects.create_user(username="member", password="pass12345")
+    return get_user_model().objects.create_user(username="member", password="Xk7pQm2vRt")
 
 
 @pytest.fixture()

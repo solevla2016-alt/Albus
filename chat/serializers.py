@@ -9,6 +9,15 @@ def direct_room_name(user_a_id: int, user_b_id: int) -> str:
     return f"dm-{low}-{high}"
 
 
+# Shown in place of the author once an account has been deleted. 152-ФЗ lets the
+# subject ask for erasure, so the name must not come back from a cached relation.
+DELETED_AUTHOR = "Удалённый пользователь"
+
+
+def _username_of(user) -> str:
+    return user.username if user is not None else DELETED_AUTHOR
+
+
 class ServerSerializer(serializers.ModelSerializer):
     owner = serializers.CharField(source="owner.username", read_only=True)
     member_count = serializers.SerializerMethodField()
@@ -40,12 +49,12 @@ class MessageSerializer(serializers.ModelSerializer):
             return None
         return {
             "id": obj.forwarded_from.id,
-            "username": obj.forwarded_from.user.username,
+            "username": _username_of(obj.forwarded_from.user),
             "text": obj.forwarded_from.text[:100],
         }
 
     def get_avatar(self, obj: Message) -> str | None:
-        if obj.user.avatar:
+        if obj.user and obj.user.avatar:
             return obj.user.avatar.url
         return None
 
@@ -54,7 +63,7 @@ class MessageSerializer(serializers.ModelSerializer):
             return None
         return {
             "id": obj.reply_to.id,
-            "username": obj.reply_to.user.username,
+            "username": _username_of(obj.reply_to.user),
             "text": obj.reply_to.text[:100],
         }
 

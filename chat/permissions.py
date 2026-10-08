@@ -44,6 +44,10 @@ def can_delete_message(user: User, message: Message) -> bool:
         return True
     author = message.user
     room = message.room
+    if author is None:
+        # the account was deleted, so authorship is anonymised and there is
+        # nobody left whose privileges could be abused
+        return can_moderate(user, room)
     if is_admin(author) or room.owner_id == author.id:
         return False
     if room.server_id and room.server.owner_id == author.id:

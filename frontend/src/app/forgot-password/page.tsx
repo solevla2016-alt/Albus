@@ -80,6 +80,21 @@ export default function ForgotPasswordPage() {
             Назад ко входу
           </Link>
         </p>
+
+        <p className="mt-8 text-center text-xs text-[var(--text-muted)]">
+          Продолжая, вы принимаете{" "}
+          <Link href="/terms" className="hover:underline">
+            правила использования
+          </Link>{" "}
+          и{" "}
+          <Link href="/privacy" className="hover:underline">
+            политику обработки персональных данных
+          </Link>
+          .{" "}
+          <Link href="/cookies" className="hover:underline">
+            Политика cookie
+          </Link>
+        </p>
       </motion.div>
     </div>
   );

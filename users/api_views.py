@@ -5,7 +5,9 @@ from email.message import EmailMessage
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.middleware.csrf import CsrfViewMiddleware, get_token
 from django.utils import timezone
 from django.utils.crypto import get_random_string
@@ -21,7 +23,7 @@ from rest_framework.decorators import (
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from .models import PasswordResetToken
+from .models import ConsentRecord, PasswordResetToken
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -91,11 +93,24 @@ def register_view(request: Request) -> Response:
     if password != password2:
         return Response({"error": "Пароли не совпадают"}, status=status.HTTP_400_BAD_REQUEST)
 
-    if len(password) < 6:
-        return Response({"error": "Пароль минимум 6 символов"}, status=status.HTTP_400_BAD_REQUEST)
+    if len(password) < 8:
+        return Response(
+            {"error": "Пароль минимум 8 символов"}, status=status.HTTP_400_BAD_REQUEST
+        )
 
     if User.objects.filter(username=username).exists():
         return Response({"error": "Пользователь уже существует"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # The AUTH_PASSWORD_VALIDATORS configured in settings were never invoked,
+    # so a six character password such as "111111" was accepted. A weak
+    # credential is a personal data security issue, not just a UX preference.
+    candidate = User(username=username, email=email)
+    try:
+        validate_password(password, candidate)
+    except DjangoValidationError as exc:
+        return Response(
+            {"error": " ".join(exc.messages)}, status=status.HTTP_400_BAD_REQUEST
+        )
 
     now = timezone.now()
     user = User.objects.create_user(username=username, email=email, password=password)
@@ -116,8 +131,12 @@ def register_view(request: Request) -> Response:
             from datetime import date
             user.birth_date = date.fromisoformat(birth_date)
             user.save(update_fields=["birth_date"])
-        except ValueError:
+        except (ValueError, TypeError):
+            # fromisoformat raises TypeError, not ValueError, when the client
+            # sends a number or an object, which used to become a 500.
             return Response({"error": "Некорректная дата рождения"}, status=status.HTTP_400_BAD_REQUEST)
+
+    _record_consent(request, user, ConsentRecord.Source.REGISTRATION)
     login(request, user)
     return Response(_user_data(user), status=status.HTTP_201_CREATED)
 
@@ -259,6 +278,31 @@ def consent_view(request: Request) -> Response:
     )
 
 
+def _client_ip(request) -> str | None:
+    """IP of the caller, honouring the reverse proxy header Caddy sets."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip() or None
+    return request.META.get("REMOTE_ADDR") or None
+
+
+def _record_consent(request, user, source: str) -> None:
+    """Append an audit row proving consent was actually given.
+
+    Timestamps on the user row alone cannot answer an audit question months
+    later, because they are overwritten by the next acceptance.
+    """
+    ConsentRecord.objects.create(
+        user=user,
+        terms_version=settings.TERMS_VERSION,
+        privacy_version=settings.PRIVACY_VERSION,
+        source=source,
+        ip_address=_client_ip(request),
+        # request.META is read from the DRF wrapper, which still exposes it
+        user_agent=str(request.META.get("HTTP_USER_AGENT", ""))[:300],
+    )
+
+
 @api_view(["POST"])
 @authentication_classes([SessionAuthentication])
 def consent_accept_view(request: Request) -> Response:
@@ -290,6 +334,8 @@ def consent_accept_view(request: Request) -> Response:
             "privacy_version",
         ]
     )
+    _record_consent(request, user, ConsentRecord.Source.RE_CONSENT)
+
     return Response({"ok": True, "terms_version": settings.TERMS_VERSION,
                     "privacy_version": settings.PRIVACY_VERSION})
 
@@ -422,10 +468,61 @@ def _send_reset_email(to_email: str, reset_url: str, username: str) -> None:
 @api_view(["POST"])
 @authentication_classes([SessionAuthentication])
 @throttle_scope("auth")
+def delete_account_view(request: Request) -> Response:
+    """Удаляет учётную запись и связанные с ней персональные данные.
+
+    152-ФЗ даёт субъекту право на уничтожение данных, и раздел 8.3 политики
+    это обещает. Пароль проверяется, чтобы украденная сессия или опечатка не
+    уничтожили аккаунт молча.
+    """
+    _require_csrf(request)
+    user = request.user
+
+    password = str(request.data.get("password") or "")
+    if not password:
+        return Response(
+            {"error": "Укажите пароль для подтверждения"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if not user.check_password(password):
+        return Response(
+            {"error": "Неверный пароль"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    username = user.username
+    # Сообщения принадлежат беседе, а не только автору, поэтому авторство
+    # обезличивается, а не удаляется: иначе история исчезла бы у всех
+    # остальных участников чата.
+    from chat.models import ChatRoom, Message, Reaction, ReadStatus, RoomBan
+
+    Message.objects.filter(user=user).update(user=None)
+    Reaction.objects.filter(user=user).delete()
+    ReadStatus.objects.filter(user=user).delete()
+    RoomBan.objects.filter(user=user).delete()
+    RoomBan.objects.filter(banned_by=user).delete()
+
+    for room in ChatRoom.objects.filter(owner=user):
+        ChatRoom.objects.filter(id=room.id).update(owner=None)
+        room.members.remove(user)
+
+    if user.avatar:
+        user.avatar.delete(save=False)
+
+    user.delete()
+    logout(request)
+
+    logger.info("account deleted: %s (ip %s)", username, _client_ip(request))
+    return Response({"ok": True, "deleted": username})
+
+
+@api_view(["POST"])
+@authentication_classes([SessionAuthentication])
+@throttle_scope("auth")
 @permission_classes([permissions.AllowAny])
 def password_reset_request_view(request: Request) -> Response:
     _require_csrf(request)
-    """Принимает email, создаёт одноразовый токен и шлёт письмо через Resend."""
+    """Принимает email, создаёт одноразовый токен и шлёт письмо через SMTP."""
     email = request.data.get("email", "").strip()
     if not email:
         return Response({"error": "Укажите email"}, status=status.HTTP_400_BAD_REQUEST)

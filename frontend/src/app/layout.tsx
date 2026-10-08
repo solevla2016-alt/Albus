@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { CookieNotice } from "@/components/CookieNotice";
 import { DevRedirect } from "@/components/DevRedirect";
 
 export const metadata: Metadata = {
@@ -47,6 +48,7 @@ export default function RootLayout({
       <body className="chat-app min-h-dvh bg-[var(--bg-primary)] text-[var(--text-primary)] antialiased">
         <DevRedirect />
         {children}
+        <CookieNotice />
       </body>
     </html>
   );

@@ -65,8 +65,11 @@ class ChatRoom(models.Model):
     is_private = models.BooleanField(default=False)
     owner = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="owned_rooms",
+        blank=True,
+        null=True,
+        help_text="SET_NULL: удаление учётной записи не должно уничтожать комнату.",
     )
     members = models.ManyToManyField(
         settings.AUTH_USER_MODEL,
@@ -95,10 +98,14 @@ class RoomBan(models.Model):
         on_delete=models.CASCADE,
         related_name="room_bans",
     )
+    # SET_NULL: бан выдал человек, который затем удалил аккаунт. Сам факт бана
+    # сохраняется, теряется только авторство.
     banned_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="bans_issued",
+        blank=True,
+        null=True,
     )
     reason = models.CharField(max_length=300, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -136,10 +143,15 @@ class Message(models.Model):
         VIDEO = "video", "Видео"
         FILE = "file", "Файл"
 
+    # SET_NULL: сообщение принадлежит беседе, а не только автору. При удалении
+    # аккаунта авторство обезличивается, но текст остаётся у остальных
+    # участников чата.
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="messages",
+        blank=True,
+        null=True,
     )
     room = models.ForeignKey(
         ChatRoom,

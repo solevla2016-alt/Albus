@@ -75,8 +75,45 @@ class User(AbstractUser):
         return self.username
 
 
+class ConsentRecord(models.Model):
+    """Неизменяемый журнал фактов получения согласия.
+
+    Поля User хранят только последний timestamp и версию: этого хватает для
+    показа окна согласия, но недостаточно, чтобы спустя полгода доказать, что
+    и когда именно субъект принял. Эта таблица сохраняет каждое принятие.
+    """
+
+    class Source(models.TextChoices):
+        REGISTRATION = "registration", "Регистрация"
+        RE_CONSENT = "re_consent", "Повторное подтверждение"
+        ADMIN = "admin", "Администратор"
+
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="consent_records",
+    )
+    terms_version = models.CharField(max_length=16)
+    privacy_version = models.CharField(max_length=16)
+    source = models.CharField(
+        max_length=20,
+        choices=Source.choices,
+        default=Source.RE_CONSENT,
+    )
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} принял v{self.privacy_version} {self.created_at:%Y-%m-%d %H:%M}"
+
+
 class PasswordResetToken(models.Model):
-    """Одноразовый токен восстановления пароля (ссылка из письма Resend)."""
+    """Одноразовый токен восстановления пароля (ссылка из письма)."""
 
     user = models.ForeignKey(
         "users.User",

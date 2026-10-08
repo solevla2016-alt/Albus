@@ -16,6 +16,7 @@ from django.contrib.auth import get_user_model
 from .ai_service import build_history, get_ai_answer
 from .models import ChatRoom, Message, Reaction, ReadStatus
 from .permissions import can_delete_message, is_banned
+from .serializers import _username_of
 from .validators import (
     MAX_ATTACHMENT_NAME_LENGTH,
     MAX_ATTACHMENT_TYPE_LENGTH,
@@ -519,7 +520,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def _handle_ai_request(self, data: dict[str, Any]) -> None:
         prompt = (data.get("prompt") or "").strip()
         if not prompt:
-            await self._send_error("Укажите вопрос для AI")
+            await self._send_error("Напишите вопрос после /ai")
+            return
+
+        # The prompt and this room's recent messages are forwarded to GigaChat,
+        # which is disclosed in section 6 of the privacy policy.
+        if await self._is_banned_user(self.scope["user"]):
+            await self._send_error("Вы забанены в этой комнате")
             return
 
         await self._enqueue_ai_reply(prompt)
@@ -1291,24 +1298,25 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return self._serialize_message_sync(message)
 
     def _serialize_message_sync(self, message: Message) -> dict:
+        author = message.user
         reply_data = None
         if message.reply_to:
             reply_data = {
                 "id": message.reply_to.id,
-                "username": message.reply_to.user.username,
+                "username": _username_of(message.reply_to.user),
                 "text": message.reply_to.text[:100],
             }
         forwarded_data = None
         if message.forwarded_from:
             forwarded_data = {
                 "id": message.forwarded_from.id,
-                "username": message.forwarded_from.user.username,
+                "username": _username_of(message.forwarded_from.user),
                 "text": message.forwarded_from.text[:100],
             }
         return {
             "id": message.id,
-            "username": message.user.username,
-            "avatar": message.user.avatar.url if message.user.avatar else None,
+            "username": _username_of(author),
+            "avatar": author.avatar.url if author and author.avatar else None,
             "message": message.text,
             "created_at": message.created_at.isoformat(),
             "is_edited": message.is_edited,
@@ -1319,7 +1327,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "attachment_url": message.attachment_url.url if message.attachment_url else None,
             "attachment_name": message.attachment_name,
             "duration": message.duration,
-            "is_ai": message.user.username == settings.AI_ASSISTANT_USERNAME,
+            "is_ai": author is not None
+            and author.username == settings.AI_ASSISTANT_USERNAME,
             "pinned": message.pinned,
             "transcription": message.transcription,
         }
