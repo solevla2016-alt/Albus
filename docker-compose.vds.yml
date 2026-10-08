@@ -92,7 +92,21 @@ services:
       # collectstatic output is bind mounted for the reverse proxy to serve.
       - /opt/albus/static:/app/staticfiles
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/auth/csrf/', timeout=5)\""]
+      # The Host header matters: ALLOWED_HOSTS lists only the public domains, so
+      # a plain request to 127.0.0.1 is rejected with 400 and the container is
+      # called unhealthy while the site itself works. Taking the host from the
+      # settings avoids hardcoding it and avoids loosening ALLOWED_HOSTS.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os,django,urllib.request;
+          os.environ.setdefault('DJANGO_SETTINGS_MODULE','config.settings');
+          django.setup();
+          from django.conf import settings;
+          host=settings.ALLOWED_HOSTS[0];
+          req=urllib.request.Request('http://127.0.0.1:8000/api/auth/csrf/',
+          headers={'Host':host});
+          raise SystemExit(0 if urllib.request.urlopen(req,timeout=5).status==200 else 1)"
       interval: 15s
       timeout: 8s
       retries: 5
