@@ -119,15 +119,20 @@ export default function RegisterPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center gap-2">
+            {/* min-w-0 обязателен: у input[type=date] есть собственная минимальная
+                ширина (сегменты даты и иконка календаря), а flex-элемент по
+                умолчанию не сжимается уже неё и вылезает за форму. */}
             <input
               type="date"
               aria-label="Дата рождения"
-              className="input-base flex-1"
+              className="input-base min-w-0 flex-1"
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
             />
-            <span className="whitespace-nowrap text-xs text-[var(--text-muted)]">дата рождения</span>
+            <span className="shrink-0 whitespace-nowrap text-xs text-[var(--text-muted)]">
+              дата рождения
+            </span>
           </div>
           <div className="relative">
             <input
