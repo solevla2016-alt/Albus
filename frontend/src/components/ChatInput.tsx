@@ -430,38 +430,38 @@ export function ChatInput({
               {moreOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setMoreOpen(false)} />
-                  <div className="absolute bottom-full left-0 z-40 mb-2 grid grid-cols-2 gap-2 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 shadow-xl">
+                  <div className="absolute bottom-full left-0 z-40 mb-2 grid w-56 max-w-[calc(100vw-2rem)] grid-cols-2 gap-2 rounded-2xl border border-[var(--border-color)] bg-[var(--bg-primary)] p-3 shadow-xl">
                     <button
                       type="button"
                       onClick={() => { setEmojiOpen(true); setMoreOpen(false); }}
-                      className="flex flex-col items-center gap-1 rounded-xl px-3 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
+                      className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
                     >
-                      <Smile size={18} />
-                      <span className="text-xs">Эмодзи</span>
+                      <Smile size={18} className="shrink-0" />
+                      <span className="truncate text-xs">Эмодзи</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => { startRecording("audio"); setMoreOpen(false); }}
-                      className="flex flex-col items-center gap-1 rounded-xl px-3 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
+                      className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
                     >
-                      <Mic size={18} />
-                      <span className="text-xs">Голос</span>
+                      <Mic size={18} className="shrink-0" />
+                      <span className="truncate text-xs">Голос</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => { startRecording("video"); setMoreOpen(false); }}
-                      className="flex flex-col items-center gap-1 rounded-xl px-3 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
+                      className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
                     >
-                      <Video size={18} />
-                      <span className="text-xs">Видео</span>
+                      <Video size={18} className="shrink-0" />
+                      <span className="truncate text-xs">Видео</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => { fileInputRef.current?.click(); setMoreOpen(false); }}
-                      className="flex flex-col items-center gap-1 rounded-xl px-3 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
+                      className="flex min-w-0 flex-col items-center gap-1 rounded-xl px-2 py-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--brand-primary)]"
                     >
-                      <Paperclip size={18} />
-                      <span className="text-xs">Файл</span>
+                      <Paperclip size={18} className="shrink-0" />
+                      <span className="truncate text-xs">Файл</span>
                     </button>
                     <p className="col-span-2 mt-1 border-t border-[var(--border-color)] pt-2 text-center text-[10px] leading-tight text-[var(--text-muted)]">
                       Аудио до {formatSize(uploadLimits.audio)} · видео до{" "}

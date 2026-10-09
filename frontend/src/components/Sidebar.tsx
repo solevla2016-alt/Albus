@@ -599,6 +599,44 @@ onClick={async () => {
           </div>
         )}
 
+        {/* ServerRail is `hidden md:flex`, so below the md breakpoint there was
+            no way to reach a server at all: the create button was shown but the
+            server it created could never be selected or listed. This strip is
+            the mobile equivalent of the rail. */}
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto scrollbar-thin px-3 pb-2 md:hidden">
+          <button
+            onClick={() => selectContext("home")}
+            className={cn(
+              "flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors",
+              activeId === "home"
+                ? "border-[var(--brand-primary)] bg-[var(--brand-light)] text-[var(--brand-primary)]"
+                : "border-[var(--border-color)] text-[var(--text-secondary)]"
+            )}
+          >
+            <Home size={13} />
+            Личные
+          </button>
+          {servers.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => selectContext(s.id)}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors",
+                activeId === s.id
+                  ? "border-[var(--brand-primary)] bg-[var(--brand-light)] text-[var(--brand-primary)]"
+                  : "border-[var(--border-color)] text-[var(--text-secondary)]"
+              )}
+            >
+              {s.name}
+              {unreadCounts[s.id] ? (
+                <span className="ml-0.5 rounded-full bg-[var(--brand-primary)] px-1.5 text-[10px] font-bold text-white">
+                  {unreadCounts[s.id]}
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
         <button
           onClick={openCreateServer}
           className="mx-3 mb-1 flex items-center gap-2 rounded-lg border border-dashed border-emerald-500/50 px-3 py-2 text-sm text-emerald-500 transition-colors hover:border-emerald-500 hover:bg-emerald-500/10 md:hidden"
@@ -884,7 +922,7 @@ onClick={async () => {
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                 >
                   <ShieldCheck size={15} />
-                  �������� �������� �� �������ʲ� �� �쭮�˙�Ѳ: �? ���Ѳ�Ң���
+                  Политика обработки персональных данных
                 </Link>
                 <Link
                   href="/cookies"
@@ -892,7 +930,7 @@ onClick={async () => {
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
                 >
                   <Cookie size={15} />
-                  ���������� ������ cookie
+                  Политика использования cookie
                 </Link>
                 <button
                   onClick={() => {
@@ -903,7 +941,7 @@ onClick={async () => {
                   className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
                 >
                   <Trash2 size={15} />
-                  ������� ��է��� ��
+                  Удалить учётную запись
                 </button>
                 <button
                   onClick={toggleTheme}

@@ -684,28 +684,28 @@ export function ChatHeader({
         ? "Канал"
         : "Группа";
   return (
-      <div className="safe-t safe-x flex items-center justify-between border-b border-[var(--border-color)] bg-[var(--bg-primary)]/80 px-4 py-3 backdrop-blur-md md:px-6">
-      <div className="flex items-center gap-3">
+      <div className="safe-t safe-x flex items-center justify-between gap-2 border-b border-[var(--border-color)] bg-[var(--bg-primary)]/80 px-3 py-3 backdrop-blur-md md:px-6">
+      <div className="flex min-w-0 items-center gap-2 md:gap-3">
         <button
           onClick={onOpenSidebar}
-          className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] md:hidden"
+          className="shrink-0 rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] md:hidden"
           aria-label="Меню"
         >
           <Menu size={20} />
         </button>
-        <div>
-          <h2 className="text-base font-semibold">
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-semibold">
             <span className="text-brand-600 dark:text-brand-400">
               {roomType === "channel" ? "#" : roomType === "direct" ? "@" : "#"}
             </span>{" "}
             {roomName}
           </h2>
-          <p className="text-xs text-[var(--text-secondary)]">
+          <p className="truncate text-xs text-[var(--text-secondary)]">
             {onlineUsers.length} в сети · {typeLabel}
           </p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         {showCallButtons && onCallAudio && onCallVideo && (
           <>
             <button

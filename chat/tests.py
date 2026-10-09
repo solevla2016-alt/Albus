@@ -297,7 +297,10 @@ class TestAiService:
 
     async def test_get_ai_help(self):
         result = await get_ai_answer("/help", [])
-        assert "Python" in result
+        # the assistant is a general workplace helper, not a Python-only tutor
+        assert "/ai" in result
+        assert "GigaChat" in result  # the disclosure must stay in the help text
+        assert "ментор по Python" not in result
 
     async def test_no_credentials_returns_unavailable(self, settings):
         settings.GIGACHAT_CLIENT_ID = ""
