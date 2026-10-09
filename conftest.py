@@ -6,10 +6,10 @@ import pytest
 from channels.routing import URLRouter
 from channels.testing import WebsocketCommunicator
 from django.contrib.auth import get_user_model
-from django.urls import path
 
 from chat.consumers import ChatConsumer
 from chat.models import ChatRoom, Message
+from chat.routing import websocket_urlpatterns
 
 
 @pytest.fixture(autouse=True)
@@ -186,11 +186,9 @@ def api_client():
 
 
 def ws_application():
-    return URLRouter(
-        [
-            path("ws/chat/<str:room_name>/", ChatConsumer.as_asgi()),
-        ]
-    )
+    # Реальные маршруты из chat.routing, а не копия: иначе тесты проходят,
+    # хотя прод разошёлся с приложением.
+    return URLRouter(list(websocket_urlpatterns))
 
 
 async def connect_ws(user, room_name: str) -> tuple[WebsocketCommunicator, bool]:
@@ -209,5 +207,22 @@ async def connect_ws(user, room_name: str) -> tuple[WebsocketCommunicator, bool]
 def ws_connect():
     async def _connect(user, room_name: str):
         return await connect_ws(user, room_name)
+
+    return _connect
+
+
+@pytest.fixture()
+def ws_connect_by_id():
+    """Подключение по id: этим маршрутом пользуется клиент после переименования."""
+
+    async def _connect(user, room_id: int):
+        communicator = WebsocketCommunicator(ws_application(), f"/ws/chat/id/{room_id}/")
+        communicator.scope["user"] = user
+        communicator.scope["headers"] = [
+            (b"host", b"testserver"),
+            (b"origin", b"https://testserver"),
+        ]
+        connected, _ = await communicator.connect()
+        return communicator, connected
 
     return _connect

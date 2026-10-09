@@ -93,7 +93,8 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
 
     let ws: WebSocket;
     try {
-      ws = new WebSocket(wsRoomUrl(roomName));
+      // Подключаемся по id: переименование комнаты не должно переподключать сокет.
+      ws = new WebSocket(wsRoomUrl(roomName, roomIdRef.current ?? undefined));
     } catch (err) {
       console.error("[ws] failed to create WebSocket:", err);
       reconnectAttempts.current += 1;

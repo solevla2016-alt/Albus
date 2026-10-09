@@ -137,8 +137,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        self.room_name: str = self.scope["url_route"]["kwargs"]["room_name"]
-        self.room = await self._get_room(self.room_name)
+        room_kwargs = self.scope["url_route"]["kwargs"]
+        self.room_name: str = room_kwargs.get("room_name", "")
+        room_id = room_kwargs.get("room_id")
+        if room_id is not None:
+            self.room = await self._get_room_by_id(int(room_id))
+        else:
+            self.room = await self._get_room(self.room_name)
+        if self.room is not None:
+            # the id route knows the name only after the lookup
+            self.room_name = self.room.name
 
         if self.room is None:
             print(f"[WS] close: room not found: {self.room_name!r}", flush=True)
@@ -1193,6 +1201,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def _get_room(self, room_name: str) -> ChatRoom | None:
         try:
             return ChatRoom.objects.get(name=room_name)
+        except ChatRoom.DoesNotExist:
+            return None
+
+    @database_sync_to_async
+    def _get_room_by_id(self, room_id: int) -> ChatRoom | None:
+        """Поиск по id: переименование комнаты не должно разрывать сокет."""
+        try:
+            return ChatRoom.objects.select_related("server", "owner").get(id=room_id)
         except ChatRoom.DoesNotExist:
             return None
 

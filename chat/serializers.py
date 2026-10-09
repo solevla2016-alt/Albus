@@ -21,16 +21,26 @@ def _username_of(user) -> str:
 class ServerSerializer(serializers.ModelSerializer):
     owner = serializers.CharField(source="owner.username", read_only=True)
     member_count = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
 
     class Meta:
         model = Server
-        fields = ("id", "name", "description", "avatar", "owner", "member_count", "created_at")
+        fields = ("id", "name", "description", "avatar", "owner", "member_count", "can_edit", "created_at")
 
     def get_member_count(self, obj: Server) -> int:
         count = obj.members.count()
         if obj.owner_id and not obj.members.filter(id=obj.owner_id).exists():
             count += 1
         return count
+
+    def get_can_edit(self, obj: Server) -> bool:
+        """Право переименования считает сервер, а не клиент по имени владельца."""
+        from .permissions import can_edit_server
+
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return False
+        return can_edit_server(request.user, obj)
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -86,12 +96,22 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     is_ai = serializers.SerializerMethodField()
     peer_id = serializers.SerializerMethodField()
     peer_username = serializers.SerializerMethodField()
+    can_edit = serializers.SerializerMethodField()
     server = serializers.PrimaryKeyRelatedField(read_only=True)
     server_name = serializers.CharField(source="server.name", read_only=True, default="")
 
     class Meta:
         model = ChatRoom
-        fields = ("id", "name", "description", "avatar", "is_private", "room_type", "owner", "member_count", "members", "last_message", "unread_count", "server", "server_name", "is_ai", "peer_id", "peer_username", "created_at")
+        fields = ("id", "name", "description", "avatar", "is_private", "room_type", "owner", "member_count", "members", "last_message", "unread_count", "server", "server_name", "is_ai", "peer_id", "peer_username", "can_edit", "created_at")
+
+    def get_can_edit(self, obj: ChatRoom) -> bool:
+        """Создатель комнаты или владелец её сервера."""
+        from .permissions import can_edit_room
+
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return False
+        return can_edit_room(request.user, obj)
 
     def _resolve_peer(self, obj: ChatRoom):
         if obj.room_type != ChatRoom.RoomType.DIRECT:
@@ -282,3 +302,32 @@ class ServerCreateSerializer(serializers.ModelSerializer):
         )
         server.members.add(self.context["request"].user)
         return server
+
+
+class ServerEditSerializer(serializers.ModelSerializer):
+    """Переименование сервера: только имя и описание.
+
+    Отдельный сериализатор, а не ServerSerializer, чтобы вместе с именем не уехали
+    владелец, участники и аватар.
+    """
+
+    name = serializers.CharField(max_length=100, allow_blank=False, trim_whitespace=True)
+
+    class Meta:
+        model = Server
+        fields = ("name", "description")
+
+
+class RoomEditSerializer(serializers.ModelSerializer):
+    """Переименование комнаты: только имя и описание.
+
+    Отдельный сериализатор, а не ChatRoomSerializer, у которого writable-поля
+    включают is_private и room_type: с их помощью можно было бы закрыть комнату
+    или превратить её в личный диалог.
+    """
+
+    name = serializers.CharField(max_length=100, allow_blank=False, trim_whitespace=True)
+
+    class Meta:
+        model = ChatRoom
+        fields = ("name", "description")

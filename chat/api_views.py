@@ -20,8 +20,11 @@ from .models import BugReport, ChatRoom, Message, RoomBan, Server
 from .permissions import (
     accessible_rooms,
     ban_user,
+    can_access_room,
     can_ban,
     can_delete_message,
+    can_edit_room,
+    can_edit_server,
     is_admin,
     is_banned,
     is_moderator,
@@ -31,7 +34,9 @@ from .serializers import (
     ChatRoomCreateSerializer,
     ChatRoomSerializer,
     MessageSerializer,
+    RoomEditSerializer,
     ServerCreateSerializer,
+    ServerEditSerializer,
     ServerSerializer,
 )
 
@@ -105,7 +110,7 @@ def servers_list_view(request: Request) -> Response:
         .select_related("owner")
         .prefetch_related("members")
     )
-    serializer = ServerSerializer(servers, many=True)
+    serializer = ServerSerializer(servers, many=True, context={"request": request})
     return Response(serializer.data)
 
 
@@ -135,7 +140,7 @@ def server_join_view(request: Request, token: str) -> Response:
         return Response({"error": "Приглашение недействительно"}, status=status.HTTP_404_NOT_FOUND)
 
     server.members.add(request.user)
-    return Response(ServerSerializer(server).data)
+    return Response(ServerSerializer(server, context={"request": request}).data)
 
 
 @api_view(["POST"])
@@ -145,7 +150,7 @@ def server_create_view(request: Request) -> Response:
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     server = serializer.save()
-    return Response(ServerSerializer(server).data, status=status.HTTP_201_CREATED)
+    return Response(ServerSerializer(server, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 @api_view(["POST"])
@@ -414,6 +419,52 @@ def room_upload_view(request: Request, room_id: int) -> Response:
         },
         status=status.HTTP_201_CREATED,
     )
+
+
+@api_view(["PATCH"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def room_detail_view(request: Request, room_id: int) -> Response:
+    try:
+        room = ChatRoom.objects.get(id=room_id)
+    except ChatRoom.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    if not can_access_room(room, request.user):
+        return Response(status=status.HTTP_404_NOT_FOUND)
+    if not can_edit_room(request.user, room):
+        return Response(
+            {"error": "Переименовать комнату может только её создатель или владелец сервера"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    serializer = RoomEditSerializer(room, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save()
+    return Response(ChatRoomSerializer(room, context={"request": request}).data)
+
+
+@api_view(["PATCH"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def server_detail_view(request: Request, server_id: int) -> Response:
+    try:
+        server = Server.objects.get(id=server_id)
+    except Server.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    if not can_edit_server(request.user, server):
+        return Response(
+            {"error": "Переименовать сервер может только его владелец"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    serializer = ServerEditSerializer(server, data=request.data, partial=True)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    serializer.save()
+    return Response(ServerSerializer(server, context={"request": request}).data)
 
 
 @api_view(["GET"])

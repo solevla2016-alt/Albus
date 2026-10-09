@@ -15,7 +15,7 @@ const API_BASE = API_URL;
 export const WS_URL = envUrl(process.env.NEXT_PUBLIC_WS_URL, "/ws/chat");
 
 /** Absolute ws(s):// endpoint for a room, resolved against the current origin. */
-export function wsRoomUrl(roomName: string): string {
+export function wsRoomUrl(roomName: string, roomId?: number): string {
   const origin =
     typeof window !== "undefined"
       ? window.location.origin
@@ -26,7 +26,11 @@ export function wsRoomUrl(roomName: string): string {
   } else if (base.protocol === "http:") {
     base.protocol = "ws:";
   }
-  return `${base.toString().replace(/\/+$/, "")}/${encodeURIComponent(roomName)}/`;
+  const tail =
+    roomId != null
+      ? `id/${encodeURIComponent(String(roomId))}/`
+      : `${encodeURIComponent(roomName)}/`;
+  return `${base.toString().replace(/\/+$/, "")}/${tail}`;
 }
 
 function readCookie(name: string): string {

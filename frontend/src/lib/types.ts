@@ -66,6 +66,8 @@ export interface Server {
   avatar: string | null;
   owner: string;
   member_count: number;
+  /** Приходит с сервера: переименовать сервер может только его владелец. */
+  can_edit?: boolean;
   created_at: string;
 }
 
@@ -85,6 +87,8 @@ export interface ChatRoom {
   is_ai?: boolean;
   peer_id?: number | null;
   peer_username?: string | null;
+  /** Приходит с сервера: переименовать комнату может её создатель или владелец сервера. */
+  can_edit?: boolean;
   last_message: {
     text: string;
     username: string;

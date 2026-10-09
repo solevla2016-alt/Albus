@@ -15,6 +15,7 @@ import {
   Megaphone,
   MessageCircle,
   Moon,
+  Pencil,
   Plus,
   Search,
   ShieldCheck,
@@ -31,6 +32,7 @@ import { cn, getInitials } from "@/lib/utils";
 import { CACHE_KEYS, readCache, writeCache } from "@/lib/cache";
 import { ServerRail, type RailKey } from "./ServerRail";
 import { BugReportDialog } from "./BugReportDialog";
+import { RenameDialog } from "./RenameDialog";
 
 function directTitle(room: ChatRoom): string {
   if (room.room_type !== "direct") return room.name;
@@ -54,6 +56,7 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
     setActiveRoom,
     onlineUsers,
     setSidebarOpen,
+    updateServer,
   } = useChatStore();
   const { dark: themeDark, toggle: toggleTheme } = useTheme();
   const [bugReportOpen, setBugReportOpen] = useState(false);
@@ -70,6 +73,7 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
   const [createError, setCreateError] = useState("");
   const [serverName, setServerName] = useState("");
   const [serverDesc, setServerDesc] = useState("");
+  const [serverRenameOpen, setServerRenameOpen] = useState(false);
   const [serverLoading, setServerLoading] = useState(false);
   const [directError, setDirectError] = useState("");
   const [users, setUsers] = useState<User[]>([]);
@@ -389,6 +393,16 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {currentServer?.can_edit && (
+              <button
+                onClick={() => setServerRenameOpen(true)}
+                className="rounded-lg p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                aria-label="Переименовать сервер"
+                title="Переименовать сервер"
+              >
+                <Pencil size={16} />
+              </button>
+            )}
             {currentServer && (
               <button
 onClick={async () => {
@@ -964,6 +978,21 @@ onClick={async () => {
       </div>
 
       {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
+
+      {serverRenameOpen && currentServer && (
+        <RenameDialog
+          title="Переименовать сервер"
+          label="Название сервера"
+          initialName={currentServer.name}
+          initialDescription={currentServer.description}
+          path={`/chat/servers/${currentServer.id}/`}
+          onClose={() => setServerRenameOpen(false)}
+          onRenamed={(data) => {
+            updateServer(currentServer.id, data);
+            writeCache(CACHE_KEYS.servers, servers.map((s) => (s.id === currentServer.id ? { ...s, ...data } : s)));
+          }}
+        />
+      )}
 
       {deleteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

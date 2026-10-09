@@ -35,6 +35,8 @@ interface ChatState {
   setRooms: (rooms: ChatRoom[]) => void;
   setServers: (servers: Server[]) => void;
   updateRoomMeta: (roomId: number, meta: { last_message: ChatRoom["last_message"]; unread_count: number }) => void;
+  updateRoom: (roomId: number, patch: Partial<ChatRoom>) => void;
+  updateServer: (serverId: number, patch: Partial<Server>) => void;
   setActiveServer: (server: Server | null) => void;
   setActiveRoom: (room: ChatRoom | null) => void;
   setRoomMembers: (roomId: number, members: ChatRoomMember[]) => void;
@@ -92,6 +94,31 @@ export const useChatStore = create<ChatState>((set) => ({
     set((state) => ({
       rooms: state.rooms.map((r) => (r.id === roomId ? { ...r, ...meta } : r)),
     })),
+  updateRoom: (roomId, patch) =>
+    set((state) => {
+      const rooms = state.rooms.map((r) => (r.id === roomId ? { ...r, ...patch } : r));
+      // activeRoom is a copy, so renaming only in rooms would leave the open
+      // chat showing the old name until it is reopened.
+      const activeRoom =
+        state.activeRoom?.id === roomId ? { ...state.activeRoom, ...patch } : state.activeRoom;
+      return { rooms, activeRoom };
+    }),
+  updateServer: (serverId, patch) =>
+    set((state) => {
+      const servers = state.servers.map((s) => (s.id === serverId ? { ...s, ...patch } : s));
+      const activeServer =
+        state.activeServer?.id === serverId ? { ...state.activeServer, ...patch } : state.activeServer;
+      // server_name is denormalised on the room, so the sidebar entry would
+      // otherwise keep showing the previous server name.
+      const rooms = state.rooms.map((r) =>
+        r.server === serverId ? { ...r, server_name: patch.name ?? r.server_name } : r
+      );
+      const activeRoom =
+        state.activeRoom?.server === serverId && patch.name
+          ? { ...state.activeRoom, server_name: patch.name }
+          : state.activeRoom;
+      return { servers, activeServer, rooms, activeRoom };
+    }),
   setActiveServer: (server) => set({ activeServer: server, activeRoom: null, messages: [] }),
   setActiveRoom: (room) =>
     set((state) => {

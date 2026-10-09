@@ -3,7 +3,7 @@
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from .models import ChatRoom, Message, RoomBan
+from .models import ChatRoom, Message, RoomBan, Server
 
 User = get_user_model()
 
@@ -104,6 +104,24 @@ def accessible_rooms(user: User):
         | Q(is_private=False, server__isnull=True)
         | Q(is_private=False, server__members=user)
     ).distinct()
+
+
+def can_edit_room(user: User, room: ChatRoom) -> bool:
+    """Кто может переименовать комнату: её создатель и владелец сервера.
+
+    Обычные участники и модераторы комнату не переименовывают, даже если умеют
+    модерировать её: право на имя остаётся у владельцев.
+    """
+    if room.owner_id == user.id:
+        return True
+    if room.server_id and room.server.owner_id == user.id:
+        return True
+    return False
+
+
+def can_edit_server(user: User, server: Server) -> bool:
+    """Переименовать сервер может только его владелец (он же создатель)."""
+    return server.owner_id == user.id
 
 
 def is_banned(room: ChatRoom, target: User) -> bool:

@@ -550,6 +550,59 @@ class TestModerationWs:
         await owner_client.disconnect()
         await member_client.disconnect()
 
+    async def test_connect_by_room_id(self, group_room, owner, member, ws_connect_by_id):
+        client, ok = await ws_connect_by_id(member, group_room.id)
+        assert ok
+        await _drain_until(client, "history")
+        await client.disconnect()
+
+    async def test_connect_by_room_id_survives_rename(
+        self, group_room, owner, member, ws_connect_by_id
+    ):
+        """После переименования соединение по id продолжает работать.
+
+        По имени переименование разорвало бы сокет, поэтому клиент ходит по id.
+        """
+        from asgiref.sync import sync_to_async
+
+        client, ok = await ws_connect_by_id(member, group_room.id)
+        assert ok
+        await _drain_until(client, "history")
+
+        await sync_to_async(ChatRoom.objects.filter(id=group_room.id).update)(
+            name="переименовано"
+        )
+
+        await client.send_json_to({"action": "message", "message": "послеRename"})
+        payload = await _drain_until(client, "message", timeout=3)
+        assert payload.get("message") == "послеRename"
+        await client.disconnect()
+
+    async def test_connect_by_room_id_denied_for_outsider_of_server(
+        self, owner, stranger, ws_connect_by_id
+    ):
+        """Комната чужого сервера недоступна и по id, даже если url известен."""
+        from asgiref.sync import sync_to_async
+
+        from .models import Server
+
+        def _make():
+            server = Server.objects.create(name="Family", owner=owner)
+            server.members.add(owner)
+            return ChatRoom.objects.create(
+                name="болталка", owner=owner, room_type="group", server=server
+            ).id
+
+        room_id = await sync_to_async(_make)()
+        client, ok = await ws_connect_by_id(stranger, room_id)
+        assert ok is False
+        await client.disconnect()
+
+    async def test_connect_by_room_id_unknown_id(self, member, ws_connect_by_id):
+        client, ok = await ws_connect_by_id(member, 99999)
+        assert ok is False
+        await client.disconnect()
+
     async def test_edit_broadcast(self, group_room, owner, member, owner_message, ws_connect):
         owner_client, _ = await ws_connect(owner, group_room.name)
         member_client, _ = await ws_connect(member, group_room.name)
@@ -866,6 +919,185 @@ class TestRoomApi:
         api_client.force_authenticate(user=owner)
         resp = api_client.post(f"/api/chat/rooms/{group_room.id}/leave/")
         assert resp.status_code == 400
+
+    def test_room_creator_can_rename(self, api_client, owner, member):
+        room = ChatRoom.objects.create(name="old", owner=owner, room_type="group")
+        room.members.add(member)
+        api_client.force_authenticate(user=owner)
+        resp = api_client.patch(
+            f"/api/chat/rooms/{room.id}/",
+            {"name": "Новое название", "description": "опис"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        room.refresh_from_db()
+        assert room.name == "Новое название"
+        assert room.description == "опис"
+
+    def test_server_owner_can_rename_room(self, api_client, owner, stranger):
+        """Владелец сервера управляет комнатами своего сервера."""
+        from .models import Server
+
+        server = Server.objects.create(name="S", owner=owner)
+        server.members.add(owner, stranger)
+        room = ChatRoom.objects.create(
+            name="old", owner=stranger, room_type="group", server=server
+        )
+        room.members.add(stranger)
+        api_client.force_authenticate(user=owner)
+        resp = api_client.patch(
+            f"/api/chat/rooms/{room.id}/", {"name": "переименовано"}, format="json"
+        )
+        assert resp.status_code == 200
+        room.refresh_from_db()
+        assert room.name == "переименовано"
+
+    def test_plain_member_cannot_rename_room(self, api_client, group_room, member):
+        api_client.force_authenticate(user=member)
+        resp = api_client.patch(
+            f"/api/chat/rooms/{group_room.id}/", {"name": "взлом"}, format="json"
+        )
+        assert resp.status_code == 403
+        group_room.refresh_from_db()
+        assert group_room.name != "взлом"
+
+    def test_moderator_cannot_rename_room(self, api_client, group_room, moderator, owner):
+        api_client.force_authenticate(user=moderator)
+        resp = api_client.patch(
+            f"/api/chat/rooms/{group_room.id}/", {"name": "взлом"}, format="json"
+        )
+        assert resp.status_code == 403
+
+    def test_admin_cannot_rename_room(self, api_client, group_room, admin):
+        """Админ модерирует, но не владеет названиями."""
+        api_client.force_authenticate(user=admin)
+        resp = api_client.patch(
+            f"/api/chat/rooms/{group_room.id}/", {"name": "взлом"}, format="json"
+        )
+        assert resp.status_code == 403
+
+    def test_outsider_cannot_rename_hidden_server_room(self, api_client, owner, stranger):
+        _server, room = self._room_in_server(owner)
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.patch(
+            f"/api/chat/rooms/{room.id}/", {"name": "взлом"}, format="json"
+        )
+        assert resp.status_code == 404
+        room.refresh_from_db()
+        assert room.name != "взлом"
+
+    def test_room_rename_cannot_touch_other_fields(self, api_client, group_room, owner):
+        """Нельзя протащить is_private/room_type через переименование."""
+        api_client.force_authenticate(user=owner)
+        resp = api_client.patch(
+            f"/api/chat/rooms/{group_room.id}/",
+            {"name": "ок", "is_private": True, "room_type": "direct", "server": 999},
+            format="json",
+        )
+        assert resp.status_code == 200
+        group_room.refresh_from_db()
+        assert group_room.is_private is False
+        assert group_room.room_type != "direct"
+
+    def test_room_rename_rejects_blank_and_long(self, api_client, group_room, owner):
+        api_client.force_authenticate(user=owner)
+        assert api_client.patch(
+            f"/api/chat/rooms/{group_room.id}/", {"name": "   "}, format="json"
+        ).status_code == 400
+        assert api_client.patch(
+            f"/api/chat/rooms/{group_room.id}/", {"name": "x" * 101}, format="json"
+        ).status_code == 400
+
+    def test_server_owner_can_rename_server(self, api_client, owner, member):
+        from .models import Server
+
+        server = Server.objects.create(name="Family", owner=owner)
+        server.members.add(owner, member)
+        api_client.force_authenticate(user=owner)
+        resp = api_client.patch(
+            f"/api/chat/servers/{server.id}/",
+            {"name": "Дом", "description": "д"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        server.refresh_from_db()
+        assert server.name == "Дом"
+
+    def test_server_member_cannot_rename_server(self, api_client, owner, member):
+        from .models import Server
+
+        server = Server.objects.create(name="Family", owner=owner)
+        server.members.add(owner, member)
+        api_client.force_authenticate(user=member)
+        resp = api_client.patch(
+            f"/api/chat/servers/{server.id}/", {"name": "взлом"}, format="json"
+        )
+        assert resp.status_code == 403
+        server.refresh_from_db()
+        assert server.name == "Family"
+
+    def test_admin_cannot_rename_server(self, api_client, owner, admin):
+        from .models import Server
+
+        server = Server.objects.create(name="Family", owner=owner)
+        api_client.force_authenticate(user=admin)
+        resp = api_client.patch(
+            f"/api/chat/servers/{server.id}/", {"name": "взлом"}, format="json"
+        )
+        assert resp.status_code == 403
+
+    def test_server_rename_rejects_blank(self, api_client, owner):
+        from .models import Server
+
+        server = Server.objects.create(name="Family", owner=owner)
+        api_client.force_authenticate(user=owner)
+        assert api_client.patch(
+            f"/api/chat/servers/{server.id}/", {"name": ""}, format="json"
+        ).status_code == 400
+
+    def test_edit_requires_auth(self, api_client, group_room):
+        assert api_client.patch(
+            f"/api/chat/rooms/{group_room.id}/", {"name": "x"}, format="json"
+        ).status_code in (401, 403)
+        assert api_client.patch(
+            "/api/chat/servers/1/", {"name": "x"}, format="json"
+        ).status_code in (401, 403)
+
+    def test_can_edit_flag_in_room_list(self, api_client, owner, member, stranger):
+        from .models import Server
+
+        server = Server.objects.create(name="S", owner=owner)
+        server.members.add(owner, stranger)
+        room = ChatRoom.objects.create(name="r", owner=owner, room_type="group", server=server)
+
+        api_client.force_authenticate(user=owner)
+        data = {r["id"]: r for r in api_client.get("/api/chat/rooms/").data}
+        assert data[room.id]["can_edit"] is True
+
+        api_client.force_authenticate(user=stranger)
+        data = {r["id"]: r for r in api_client.get("/api/chat/rooms/").data}
+        assert data[room.id]["can_edit"] is False
+
+    def test_can_edit_flag_in_server_list(self, api_client, owner, member):
+        from .models import Server
+
+        server = Server.objects.create(name="S", owner=owner)
+        server.members.add(owner, member)
+
+        api_client.force_authenticate(user=owner)
+        assert api_client.get("/api/chat/servers/").data[0]["can_edit"] is True
+
+        api_client.force_authenticate(user=member)
+        assert api_client.get("/api/chat/servers/").data[0]["can_edit"] is False
+
+    def test_can_edit_is_false_without_request(self, group_room, owner):
+        from .models import Server
+        from .serializers import ChatRoomSerializer, ServerSerializer
+
+        # Вызываем метод напрямую: остальные поля сериализатора требуют request.
+        assert ChatRoomSerializer(group_room).get_can_edit(group_room) is False
+        server = Server.objects.create(name="S", owner=owner)
+        assert ServerSerializer(server).get_can_edit(server) is False
 
     def _room_in_server(self, owner, is_private=False):
         from .models import Server

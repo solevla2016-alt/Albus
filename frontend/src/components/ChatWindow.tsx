@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Hash, Loader2, Maximize2, Menu, Minimize2, MonitorUp, MonitorStop, MoreVertical, Phone, ShieldBan, Unlock, UserMinus, Users, Video, X } from "lucide-react";
+import { Hash, Loader2, Maximize2, Menu, Minimize2, MonitorUp, MonitorStop, MoreVertical, Pencil, Phone, ShieldBan, Unlock, UserMinus, Users, Video, X } from "lucide-react";
 import { useChatStore } from "@/lib/store";
 import { useWebSocket } from "@/lib/useWebSocket";
 import { API_URL, apiFetch, deleteContactApi, mediaUrl } from "@/lib/api";
@@ -22,6 +22,7 @@ import { TypingIndicator } from "./TypingIndicator";
 import { EmptyState } from "./EmptyState";
 import { MembersPanel } from "./MembersPanel";
 import { CallPanel } from "./CallPanel";
+import { RenameDialog } from "./RenameDialog";
 
 export function ChatWindow() {
   const { activeRoom, messages, setSidebarOpen } = useChatStore();
@@ -50,7 +51,8 @@ export function ChatWindow() {
       : null;
   const [peerBlocked, setPeerBlocked] = useState(false);
   const [contactBusy, setContactBusy] = useState(false);
-  const { setActiveRoom, setRooms } = useChatStore();
+  const [renameOpen, setRenameOpen] = useState(false);
+  const { setActiveRoom, setRooms, updateRoom } = useChatStore();
 
   useEffect(() => {
     if (!activeRoom || !contactUsername) {
@@ -402,6 +404,11 @@ export function ChatWindow() {
                 }
               : undefined
           }
+          onRename={
+            activeRoom.can_edit && activeRoom.room_type !== "direct"
+              ? () => setRenameOpen(true)
+              : undefined
+          }
         />
 
         {connectionState !== "online" && (
@@ -430,6 +437,18 @@ export function ChatWindow() {
               <X size={14} />
             </button>
           </div>
+        )}
+
+        {renameOpen && activeRoom && (
+          <RenameDialog
+            title="Переименовать комнату"
+            label="Название"
+            initialName={activeRoom.name}
+            initialDescription={activeRoom.description}
+            path={`/chat/rooms/${activeRoom.id}/`}
+            onClose={() => setRenameOpen(false)}
+            onRenamed={(data) => updateRoom(activeRoom.id, data)}
+          />
         )}
 
         {screenState && (
@@ -653,6 +672,7 @@ export function ChatHeader({
   onCallAudio,
   onCallVideo,
   contactMenu,
+  onRename,
 }: {
   roomName: string;
   roomType?: "group" | "channel" | "direct";
@@ -674,6 +694,7 @@ export function ChatHeader({
     onDelete: () => void;
     busy?: boolean;
   };
+  onRename?: () => void;
 }) {
   const onlineUsers = useChatStore((s) => s.onlineUsers);
   const [contactMenuOpen, setContactMenuOpen] = useState(false);
@@ -763,13 +784,13 @@ export function ChatHeader({
         >
           🔍
         </button>
-        {contactMenu && (
+        {(contactMenu || onRename) && (
           <div className="relative">
             <button
               onClick={() => setContactMenuOpen((v) => !v)}
               className="rounded-lg p-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)]"
-              title="Действия с контактом"
-              aria-label="Действия с контактом"
+              title={onRename ? "Настройки комнаты" : "Действия с контактом"}
+              aria-label={onRename ? "Настройки комнаты" : "Действия с контактом"}
             >
               <MoreVertical size={18} />
             </button>
@@ -780,6 +801,20 @@ export function ChatHeader({
                   onClick={() => setContactMenuOpen(false)}
                 />
                 <div className="absolute right-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)] py-1 shadow-xl">
+                  {onRename && (
+                    <button
+                      onClick={() => {
+                        setContactMenuOpen(false);
+                        onRename();
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-tertiary)]"
+                    >
+                      <Pencil size={15} className="text-[var(--text-secondary)]" />
+                      Переименовать
+                    </button>
+                  )}
+                  {contactMenu && (
+                  <>
                   <button
                     onClick={() => {
                       setContactMenuOpen(false);
@@ -806,6 +841,8 @@ export function ChatHeader({
                     <UserMinus size={15} />
                     Удалить контакт
                   </button>
+                  </>
+                  )}
                 </div>
               </>
             )}
