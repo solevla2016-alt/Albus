@@ -21,7 +21,7 @@ const EMOJI_LIST = [
 
 interface PendingAttachment {
   blob: Blob;
-  type: "audio" | "video" | "file";
+  type: "image" | "audio" | "video" | "file";
   name: string;
   duration?: number | null;
 }
@@ -184,20 +184,32 @@ export function ChatInput({
     setPending(null);
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    attachFile(file);
+    e.target.value = "";
+  };
+
+  const attachFile = (file: File) => {
     const tooBig = checkFileSize(file, uploadLimits);
     if (tooBig) {
       onError(tooBig);
-      e.target.value = "";
       return;
     }
-    const type = file.type.startsWith("audio/") ? "audio"
+    const type = file.type.startsWith("image/") ? "image"
+      : file.type.startsWith("audio/") ? "audio"
       : file.type.startsWith("video/") ? "video"
       : "file";
     setPending({ blob: file, type, name: file.name });
-    e.target.value = "";
+  };
+
+  /** Вставка скриншота или скопированного файла прямо в поле ввода. */
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData.files);
+    if (files.length === 0) return;
+    e.preventDefault();
+    attachFile(files[0]);
   };
 
   const handleSubmit = async () => {
@@ -361,7 +373,7 @@ export function ChatInput({
         <input
           ref={fileInputRef}
           type="file"
-          accept="audio/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+          accept="image/*,audio/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.rtf,.odt,.ods,.zip,.rar,.7z,.tar,.gz"
           className="hidden"
           onChange={handleFileSelect}
         />
@@ -484,6 +496,7 @@ export function ChatInput({
               value={value}
               onChange={handleChange}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder="Введите сообщение..."
               rows={1}
               className="max-h-[150px] min-h-[44px] flex-1 resize-none rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] px-4 py-3 text-sm placeholder-[var(--text-muted)] focus:border-[var(--brand-primary)] focus:outline-none focus:ring-2 focus:ring-brand-500/20"

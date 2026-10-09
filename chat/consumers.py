@@ -15,7 +15,7 @@ from django.contrib.auth import get_user_model
 
 from .ai_service import build_history, get_ai_answer
 from .models import ChatRoom, Message, Reaction, ReadStatus
-from .permissions import can_delete_message, is_banned
+from .permissions import can_access_room, can_delete_message, is_banned
 from .serializers import _username_of
 from .validators import (
     MAX_ATTACHMENT_NAME_LENGTH,
@@ -1228,13 +1228,9 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _has_access(self, user) -> bool:
-        if is_banned(self.room, user):
-            return False
-        if self.room.owner_id == user.id:
-            return True
-        if not self.room.is_private:
-            return True
-        return self.room.members.filter(id=user.id).exists()
+        # Delegates to the same rule the REST endpoints use, so a room cannot be
+        # reachable over the socket while hidden from the list.
+        return can_access_room(self.room, user)
 
     @database_sync_to_async
     def _is_banned_user(self, user) -> bool:

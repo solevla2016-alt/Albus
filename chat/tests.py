@@ -867,6 +867,79 @@ class TestRoomApi:
         resp = api_client.post(f"/api/chat/rooms/{group_room.id}/leave/")
         assert resp.status_code == 400
 
+    def _room_in_server(self, owner, is_private=False):
+        from .models import Server
+
+        server = Server.objects.create(name="Family", owner=owner, description="d")
+        server.members.add(owner)
+        room = ChatRoom.objects.create(
+            name="болталка",
+            owner=owner,
+            room_type="group",
+            server=server,
+            is_private=is_private,
+        )
+        room.members.add(owner)
+        return server, room
+
+    def test_server_room_hidden_from_outsider(self, api_client, owner, stranger):
+        """Комната внутри сервера не должна попадать в список чужим пользователям."""
+        _server, room = self._room_in_server(owner)
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.get("/api/chat/rooms/")
+        assert resp.status_code == 200
+        assert not any(r["name"] == room.name for r in resp.data)
+
+    def test_server_room_visible_to_server_member(self, api_client, owner, stranger):
+        server, room = self._room_in_server(owner)
+        server.members.add(stranger)
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.get("/api/chat/rooms/")
+        assert resp.status_code == 200
+        assert any(r["name"] == room.name for r in resp.data)
+
+    def test_join_room_in_foreign_server_denied(self, api_client, owner, stranger):
+        _server, room = self._room_in_server(owner)
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.post(f"/api/chat/rooms/{room.id}/join/")
+        assert resp.status_code == 403
+        assert stranger not in room.members.all()
+
+    def test_join_room_in_own_server_allowed(self, api_client, owner, stranger):
+        server, room = self._room_in_server(owner)
+        server.members.add(stranger)
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.post(f"/api/chat/rooms/{room.id}/join/")
+        assert resp.status_code == 200
+        assert stranger in room.members.all()
+
+    def test_create_room_in_foreign_server_denied(self, api_client, owner, stranger):
+        """Создание комнаты в чужом сервере не должно выдавать и доступ к серверу."""
+        server, _room = self._room_in_server(owner)
+        api_client.force_authenticate(user=stranger)
+        resp = api_client.post(
+            "/api/chat/rooms/create/",
+            {"name": "Intruder", "room_type": "group", "server": server.id},
+            format="json",
+        )
+        assert resp.status_code == 400
+        assert stranger not in server.members.all()
+        assert not server.rooms.filter(name="Intruder").exists()
+
+    def test_outsider_socket_access_denied_for_server_room(self, owner, stranger):
+        from asgiref.sync import async_to_sync
+
+        from .consumers import ChatConsumer
+
+        _server, room = self._room_in_server(owner)
+        consumer = ChatConsumer()
+        consumer.scope = {"url_route": {"kwargs": {"room_id": room.id}}}
+        consumer.room = room
+        assert async_to_sync(consumer._has_access)(stranger) is False
+        owner_consumer = ChatConsumer()
+        owner_consumer.room = room
+        assert async_to_sync(owner_consumer._has_access)(owner) is True
+
     def test_private_room_join_denied(self, api_client, owner, stranger):
         room = ChatRoom.objects.create(name="private-room", owner=owner, room_type="group", is_private=True)
         room.members.add(owner)

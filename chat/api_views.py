@@ -18,6 +18,7 @@ from rest_framework.response import Response
 
 from .models import BugReport, ChatRoom, Message, RoomBan, Server
 from .permissions import (
+    accessible_rooms,
     ban_user,
     can_ban,
     can_delete_message,
@@ -82,9 +83,7 @@ def _upload_limit(attachment_type: str) -> int:
 @api_view(["GET"])
 def rooms_list_view(request: Request) -> Response:
     rooms = (
-        ChatRoom.objects
-        .filter(Q(is_private=False) | Q(members=request.user) | Q(owner=request.user))
-        .distinct()
+        accessible_rooms(request.user)
         .select_related("owner", "server")
         .prefetch_related("members", "messages")
         .annotate(has_messages=Exists(Message.objects.filter(room=OuterRef("pk"))))
@@ -188,6 +187,18 @@ def room_join_view(request: Request, room_id: int) -> Response:
 
     if room.is_private:
         return Response({"error": "Приватная комната"}, status=status.HTTP_403_FORBIDDEN)
+
+    # A room inside a server is not an open room: membership of that server is
+    # required, otherwise anyone could walk into a private team space.
+    if room.server_id is not None and not (
+        room.owner_id == request.user.id
+        or room.members.filter(id=request.user.id).exists()
+        or room.server.members.filter(id=request.user.id).exists()
+    ):
+        return Response(
+            {"error": "Комната принадлежит серверу, в который вас не приглашали"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     room.members.add(request.user)
     return Response({"success": True})

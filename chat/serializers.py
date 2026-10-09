@@ -179,6 +179,22 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
     )
     name = serializers.CharField(max_length=100)
 
+    def validate_server(self, value):
+        """Сервер должен быть тем, в котором пользователь состоит.
+
+        Раньше поле принимало любой сервер, а create() добавлял автора в комнату
+        и в список участников всего сервера: можно было создать комнату в чужом
+        сервере и автоматически стать его участником.
+        """
+        user = self.context["request"].user
+        if value is None:
+            return value
+        if value.owner_id == user.id or value.members.filter(id=user.id).exists():
+            return value
+        raise serializers.ValidationError(
+            "Нельзя создать комнату в сервере, в котором вы не участвуете"
+        )
+
     class Meta:
         model = ChatRoom
         fields = ("name", "description", "is_private", "room_type", "server")

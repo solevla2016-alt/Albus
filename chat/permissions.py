@@ -72,6 +72,40 @@ def _ban_queryset(room: ChatRoom, target: User):
     return RoomBan.objects.filter(room=room, user=target)
 
 
+def can_access_room(room: ChatRoom, user: User) -> bool:
+    """Есть ли у пользователя доступ к комнате.
+
+    Комната внутри сервера доступна только участникам этого сервера. Раньше
+    условие «комната не приватная ⇒ пускаем всех» открывало любую комнату любого
+    сервера каждому зарегистрированному пользователю: он видел её в списке
+    комнат и мог подключиться по WebSocket без приглашения.
+    """
+    if is_banned(room, user):
+        return False
+    if room.owner_id == user.id:
+        return True
+    if room.is_private:
+        return room.members.filter(id=user.id).exists()
+    if room.server_id is not None:
+        return (
+            room.members.filter(id=user.id).exists()
+            or room.server.members.filter(id=user.id).exists()
+        )
+    return True
+
+
+def accessible_rooms(user: User):
+    """ queryset комнат, видимых пользователю. """
+    from django.db.models import Q
+
+    return ChatRoom.objects.filter(
+        Q(owner=user)
+        | Q(members=user)
+        | Q(is_private=False, server__isnull=True)
+        | Q(is_private=False, server__members=user)
+    ).distinct()
+
+
 def is_banned(room: ChatRoom, target: User) -> bool:
     """Есть ли активный (не истёкший) бан у пользователя в комнате."""
     now = timezone.now()
