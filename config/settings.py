@@ -197,6 +197,19 @@ YANDEX_SMTP_PORT = int(os.getenv("YANDEX_SMTP_PORT", "465"))
 DEFAULT_FROM_EMAIL = os.getenv("YANDEX_MAIL_FROM", "no-reply@localhost")
 # where bug reports from the app are delivered (falls back to the sender)
 BUG_REPORT_EMAIL = os.getenv("BUG_REPORT_EMAIL", "")
+# --- Email: сигналы безопасности ассистента (правила 14 и 15 промта) ---
+# Письмо уходит, когда запрос к ассистенту попал в опасную тему: изготовление
+# оружия, наркотики, самоповреждение или сообщение ребёнка о том, что ему плохо.
+SAFETY_ALERT_EMAIL = os.getenv("SAFETY_ALERT_EMAIL", "")
+SAFETY_ALERTS_ENABLED = (
+    os.getenv("SAFETY_ALERTS_ENABLED", "True").strip().lower() == "true"
+)
+# Не слать письмо чаще, чем раз в N минут на пару «пользователь + правило».
+# Сама запись в базу сохраняется всегда, ограничение только на письма.
+SAFETY_ALERT_COOLDOWN_MINUTES = int(
+    os.getenv("SAFETY_ALERT_COOLDOWN_MINUTES", "60")
+)
+SAFETY_ALERT_EXCERPT_CHARS = int(os.getenv("SAFETY_ALERT_EXCERPT_CHARS", "500"))
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 # --- Rate limiting ---

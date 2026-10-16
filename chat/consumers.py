@@ -16,6 +16,7 @@ from django.contrib.auth import get_user_model
 from .ai_service import build_history, get_ai_answer
 from .models import ChatRoom, Message, Reaction, ReadStatus
 from .permissions import can_access_room, can_delete_message, is_banned
+from .safety import SafetySignal, detect, record_signal
 from .serializers import _username_of
 from .validators import (
     MAX_ATTACHMENT_NAME_LENGTH,
@@ -537,7 +538,36 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self._send_error("Вы забанены в этой комнате")
             return
 
+        # Rules 14 and 15 of the assistant prompt: dangerous topics and a child in
+        # distress. Recorded and mailed to the operator before the model is
+        # called, so the signal survives an outage or a refusal.
+        await self._check_safety_signal(prompt)
+
         await self._enqueue_ai_reply(prompt)
+
+    async def _check_safety_signal(self, prompt: str) -> None:
+        signal = detect(prompt)
+        if signal is None:
+            return
+        try:
+            alert = await self._record_safety_alert(signal)
+        except Exception:
+            logger.exception("safety signal check failed")
+            return
+        if alert is None:
+            return
+        logger.warning(
+            "safety signal %s from %s in %s",
+            signal.rule,
+            self.scope["user"].username,
+            self.room.name,
+        )
+
+    @database_sync_to_async
+    def _record_safety_alert(self, signal: SafetySignal) -> Any:
+        # record_signal пишет в базу и шлёт письмо через блокирующий smtplib,
+        # поэтому весь вызов уводится из потока событий.
+        return record_signal(self.scope["user"], self.room, signal)
 
     async def _enqueue_ai_reply(self, prompt: str) -> None:
         """Answer questions one at a time, in the order they arrived."""

@@ -301,3 +301,42 @@ class BugReport(models.Model):
     def __str__(self) -> str:
         return f"{self.user.username}: {self.text[:40]}"
 
+
+class ChildSafetyAlert(models.Model):
+    """Сигнал, что запрос к ассистенту попал в тему правил 14 или 15.
+
+    Письмо уходит оператору, но сигнал сохраняется в базе всегда: если SMTP
+    недоступен, запись остаётся с notified=False, и её можно разобрать позже.
+    """
+
+    class Rule(models.TextChoices):
+        RULE_14 = "rule_14", "Опасная тема (правило 14)"
+        RULE_15 = "rule_15", "Ребёнку плохо (правило 15)"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="child_safety_alerts",
+    )
+    room = models.ForeignKey(
+        ChatRoom,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="safety_alerts",
+    )
+    rule = models.CharField(max_length=10, choices=Rule.choices)
+    excerpt = models.TextField(blank=True, default="")
+    notified = models.BooleanField(
+        default=False,
+        help_text="Отправлено ли письмо оператору",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "rule", "created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.user.username} / {self.rule} / {self.created_at:%Y-%m-%d %H:%M}"
+
