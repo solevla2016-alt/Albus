@@ -311,7 +311,7 @@ class ChildSafetyAlert(models.Model):
 
     class Rule(models.TextChoices):
         RULE_14 = "rule_14", "Опасная тема (правило 14)"
-        RULE_15 = "rule_15", "Ребёнку плохо (правило 15)"
+        RULE_15 = "rule_15", "Угроза безопасности (правило 15)"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,

@@ -91,7 +91,7 @@ class TestRecordSignal:
         assert alert.rule == RULE_15
         assert alert.notified is True
         assert sent["to"] == "ops@example.com"
-        assert "Ребёнку плохо" in sent["subject"]
+        assert "Угроза безопасности" in sent["subject"]
         assert "rule_15" in sent["subject"]
         assert "owner" in sent["subject"]
         assert "автоматический сигнал" in sent["text"].lower()
