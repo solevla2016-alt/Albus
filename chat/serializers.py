@@ -1,7 +1,7 @@
 from django.conf import settings
 from rest_framework import serializers
 
-from .models import ChatRoom, Message, ReadStatus, Server
+from .models import ChatRoom, ChildSafetyAlert, Message, ReadStatus, Server
 
 
 def direct_room_name(user_a_id: int, user_b_id: int) -> str:
@@ -331,3 +331,40 @@ class RoomEditSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatRoom
         fields = ("name", "description")
+
+
+class SafetyAlertSerializer(serializers.ModelSerializer):
+    """Сигнал безопасности для экрана модератора.
+
+    Выдержка уже обезличена при записи и обнуляется по сроку хранения, поэтому
+    здесь она отдаётся как есть, но без данных, которых не было бы в письме.
+    """
+
+    username = serializers.CharField(source="user.username", read_only=True)
+    room_name = serializers.CharField(source="room.name", read_only=True, default="")
+    rule_label = serializers.CharField(source="get_rule_display", read_only=True)
+    status_label = serializers.CharField(source="get_status_display", read_only=True)
+    reviewed_by_username = serializers.CharField(
+        source="reviewed_by.username",
+        read_only=True,
+        default="",
+    )
+
+    class Meta:
+        model = ChildSafetyAlert
+        fields = (
+            "id",
+            "username",
+            "room_name",
+            "rule",
+            "rule_label",
+            "excerpt",
+            "excerpt_cleared",
+            "notified",
+            "status",
+            "status_label",
+            "reviewed_by_username",
+            "reviewed_at",
+            "created_at",
+        )
+        read_only_fields = fields

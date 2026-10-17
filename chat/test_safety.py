@@ -270,3 +270,210 @@ class TestSafetySignalOverSocket:
         await communicator.disconnect()
 
         assert await sync_to_async(ChildSafetyAlert.objects.count)() == 0
+
+
+class TestMasking:
+    """В письмо не должно уезжать почта, телефоны и реквизиты."""
+
+    @pytest.mark.parametrize(
+        ("raw", "must_not_contain"),
+        [
+            ("пиши на ivan.petrov@yandex.ru", "ivan.petrov"),
+            ("мой тел +7 999 123-45-67", "999"),
+            ("ИНН 7707083893 попросили", "7707083893"),
+            ("счёт 40817810123456789012", "4081781012"),
+            ("карта 4276 3800 1234 5678", "4276"),
+            ("пиши в @albus_chat_support", "albus_chat_support"),
+        ],
+    )
+    def test_masks_personal_data(self, raw, must_not_contain):
+        from chat.safety import mask_personal_data
+
+        masked = mask_personal_data(raw)
+        assert must_not_contain not in masked, masked
+
+    @pytest.mark.parametrize(
+        "keep",
+        [
+            "проект 2024 года",
+            "бюджет 1 200 000 руб",
+            "меня бьют дома",
+            "коллега угрожает",
+        ],
+    )
+    def test_keeps_meaning(self, keep):
+        from chat.safety import mask_personal_data
+
+        assert keep in mask_personal_data(keep)
+
+    def test_excerpt_is_masked_and_trimmed(self, settings):
+        settings.SAFETY_ALERT_EXCERPT_CHARS = 60
+        signal = detect("пиши на ivan.petrov@yandex.ru потому что меня бьют дома")
+        assert "ivan.petrov" not in signal.excerpt
+        assert len(signal.excerpt) <= 60
+
+    def test_excerpt_can_be_disabled_entirely(self, settings):
+        settings.SAFETY_ALERT_EXCERPT_CHARS = 0
+        signal = detect("меня бьют дома")
+        assert signal.excerpt == ""
+
+    def test_default_excerpt_length_is_short(self, settings):
+        assert settings.SAFETY_ALERT_EXCERPT_CHARS <= 200
+
+
+class TestPurgeCommand:
+    def test_clears_old_excerpt_and_keeps_metadata(self, owner, group_room, settings):
+        from django.core.management import call_command
+
+        from chat.models import ChildSafetyAlert
+        from chat.safety import RULE_14, SafetySignal, record_signal
+
+        settings.SAFETY_ALERT_EMAIL = ""
+        alert = record_signal(owner, group_room, SafetySignal(RULE_14, "бомба", "текст"))
+        assert alert.excerpt
+
+        ChildSafetyAlert.objects.update(
+            created_at=timezone.now() - timezone.timedelta(days=40)
+        )
+        call_command("purge_safety_alerts", verbosity=0)
+
+        alert.refresh_from_db()
+        assert alert.excerpt == ""
+        assert alert.excerpt_cleared is True
+        assert alert.rule == RULE_14
+        assert alert.user_id == owner.id
+
+    def test_keeps_fresh_excerpts(self, owner, group_room, settings):
+        from django.core.management import call_command
+
+        from chat.safety import RULE_14, SafetySignal, record_signal
+
+        settings.SAFETY_ALERT_EMAIL = ""
+        alert = record_signal(owner, group_room, SafetySignal(RULE_14, "бомба", "текст"))
+        call_command("purge_safety_alerts", verbosity=0)
+        alert.refresh_from_db()
+        assert alert.excerpt == "текст"
+        assert alert.excerpt_cleared is False
+
+    def test_dry_run_changes_nothing(self, owner, group_room, settings):
+        from django.core.management import call_command
+
+        from chat.models import ChildSafetyAlert
+        from chat.safety import RULE_14, SafetySignal, record_signal
+
+        settings.SAFETY_ALERT_EMAIL = ""
+        alert = record_signal(owner, group_room, SafetySignal(RULE_14, "бомба", "текст"))
+        ChildSafetyAlert.objects.update(
+            created_at=timezone.now() - timezone.timedelta(days=40)
+        )
+        call_command("purge_safety_alerts", "--dry-run", verbosity=0)
+        alert.refresh_from_db()
+        assert alert.excerpt == "текст"
+
+    def test_zero_days_disables_purge(self, owner, group_room, settings):
+        from django.core.management import call_command
+
+        from chat.models import ChildSafetyAlert
+        from chat.safety import RULE_14, SafetySignal, record_signal
+
+        settings.SAFETY_ALERT_EMAIL = ""
+        alert = record_signal(owner, group_room, SafetySignal(RULE_14, "бомба", "текст"))
+        ChildSafetyAlert.objects.update(
+            created_at=timezone.now() - timezone.timedelta(days=400)
+        )
+        call_command("purge_safety_alerts", "--days", "0", verbosity=0)
+        alert.refresh_from_db()
+        assert alert.excerpt == "текст"
+
+
+class TestSafetyAlertsApi:
+    def test_regular_user_cannot_list(self, api_client, member):
+        api_client.force_authenticate(user=member)
+        assert api_client.get("/api/chat/safety-alerts/").status_code == 403
+
+    def test_moderator_can_list(self, api_client, moderator, owner, group_room):
+        from chat.safety import RULE_15, SafetySignal, record_signal
+
+        record_signal(owner, group_room, SafetySignal(RULE_15, "меня бьют", "меня бьют"))
+        api_client.force_authenticate(user=moderator)
+        resp = api_client.get("/api/chat/safety-alerts/")
+        assert resp.status_code == 200
+        assert len(resp.data) == 1
+        assert resp.data[0]["username"] == owner.username
+        assert resp.data[0]["rule_label"].startswith("Угроза")
+        assert resp.data[0]["status"] == "new"
+
+    def test_admin_can_mark_reviewed(self, api_client, admin, owner, group_room):
+        from chat.safety import RULE_15, SafetySignal, record_signal
+
+        alert = record_signal(owner, group_room, SafetySignal(RULE_15, "меня бьют", "меня бьют"))
+        api_client.force_authenticate(user=admin)
+        resp = api_client.patch(
+            f"/api/chat/safety-alerts/{alert.id}/",
+            {"status": "reviewed"},
+            format="json",
+        )
+        assert resp.status_code == 200
+        alert.refresh_from_db()
+        assert alert.status == "reviewed"
+        assert alert.reviewed_by_id == admin.id
+        assert alert.reviewed_at is not None
+
+    def test_reopen_clears_reviewer(self, api_client, admin, owner, group_room):
+        from chat.safety import RULE_15, SafetySignal, record_signal
+
+        alert = record_signal(owner, group_room, SafetySignal(RULE_15, "меня бьют", "меня бьют"))
+        api_client.force_authenticate(user=admin)
+        api_client.patch(
+            f"/api/chat/safety-alerts/{alert.id}/",
+            {"status": "reviewed"},
+            format="json",
+        )
+        api_client.patch(
+            f"/api/chat/safety-alerts/{alert.id}/",
+            {"status": "new"},
+            format="json",
+        )
+        alert.refresh_from_db()
+        assert alert.status == "new"
+        assert alert.reviewed_by_id is None
+
+    def test_invalid_status_rejected(self, api_client, admin, owner, group_room):
+        from chat.safety import RULE_15, SafetySignal, record_signal
+
+        alert = record_signal(owner, group_room, SafetySignal(RULE_15, "меня бьют", "меня бьют"))
+        api_client.force_authenticate(user=admin)
+        resp = api_client.patch(
+            f"/api/chat/safety-alerts/{alert.id}/",
+            {"status": "nonsense"},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_filter_by_status(self, api_client, admin, owner, group_room):
+        from chat.safety import RULE_15, SafetySignal, record_signal
+
+        alert = record_signal(owner, group_room, SafetySignal(RULE_15, "меня бьют", "меня бьют"))
+        api_client.force_authenticate(user=admin)
+        api_client.patch(
+            f"/api/chat/safety-alerts/{alert.id}/",
+            {"status": "reviewed"},
+            format="json",
+        )
+        assert len(api_client.get("/api/chat/safety-alerts/?status=new").data) == 0
+        assert len(api_client.get("/api/chat/safety-alerts/?status=reviewed").data) == 1
+
+    def test_regular_user_cannot_mark_reviewed(self, api_client, member, owner, group_room):
+        from chat.safety import RULE_15, SafetySignal, record_signal
+
+        alert = record_signal(owner, group_room, SafetySignal(RULE_15, "меня бьют", "меня бьют"))
+        api_client.force_authenticate(user=member)
+        resp = api_client.patch(
+            f"/api/chat/safety-alerts/{alert.id}/",
+            {"status": "reviewed"},
+            format="json",
+        )
+        assert resp.status_code == 403
+
+    def test_anonymous_rejected(self, api_client):
+        assert api_client.get("/api/chat/safety-alerts/").status_code in (401, 403)

@@ -313,6 +313,10 @@ class ChildSafetyAlert(models.Model):
         RULE_14 = "rule_14", "Опасная тема (правило 14)"
         RULE_15 = "rule_15", "Угроза безопасности (правило 15)"
 
+    class Status(models.TextChoices):
+        NEW = "new", "Новое"
+        REVIEWED = "reviewed", "Разобрано"
+
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -326,16 +330,40 @@ class ChildSafetyAlert(models.Model):
         related_name="safety_alerts",
     )
     rule = models.CharField(max_length=10, choices=Rule.choices)
-    excerpt = models.TextField(blank=True, default="")
+    excerpt = models.TextField(
+        blank=True,
+        default="",
+        help_text="Очищается через SAFETY_ALERT_EXCERPT_RETENTION_DAYS",
+    )
+    excerpt_cleared = models.BooleanField(
+        default=False,
+        help_text="Выдержка обнулена по сроку хранения, метаданные остались",
+    )
     notified = models.BooleanField(
         default=False,
         help_text="Отправлено ли письмо оператору",
     )
+    status = models.CharField(
+        max_length=12,
+        choices=Status.choices,
+        default=Status.NEW,
+    )
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="reviewed_safety_alerts",
+    )
+    reviewed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["user", "rule", "created_at"])]
+        indexes = [
+            models.Index(fields=["user", "rule", "created_at"]),
+            models.Index(fields=["status", "created_at"]),
+        ]
 
     def __str__(self) -> str:
         return f"{self.user.username} / {self.rule} / {self.created_at:%Y-%m-%d %H:%M}"

@@ -113,10 +113,39 @@ class SafetySignal:
     excerpt: str
 
 
+# Персональные данные, которые маскируются в выдержке. Порядок важен: почта
+# проверяется раньше телефонов и @ников, иначе адрес распадётся на части.
+_MASK_PATTERNS = (
+    ("email", re.compile(r"[\w.+-]+@[\w-]+\.[\w.]{2,}"), "[email]"),
+    ("handle", re.compile(r"(?<![\w.])@[\w.-]{3,}"), "@…"),
+    ("phone", re.compile(r"(?:\+7|\b8)[\s\-()]*\d{3}[\s\-()]*\d{3}[\s\-()]*\d{2}[\s\-()]*\d{2}\b"), "[телефон]"),
+    ("inn", re.compile(r"\b\d{10}\b"), "[ИНН]"),
+    ("ogrn", re.compile(r"\b\d{13}\b"), "[ОГРН]"),
+    # Счёт или карта: 12-20 цифр с разделителями. Годы и суммы не задеваются.
+    ("account", re.compile(r"\b(?:\d[ -]?){12,20}\d\b"), "[реквизиты]"),
+    ("ip", re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"), "[ip]"),
+)
+
+
+def mask_personal_data(text: str) -> str:
+    """Убирает из текста почту, телефоны и реквизиты.
+
+    Маскируется намеренно узко: оператору нужен смысл сигнала, поэтому «проект
+    2024 года» и «бюджет 1 200 000 руб» остаются как есть, а конкретные
+    значения не уезжают по почте.
+    """
+    for _name, pattern, replacement in _MASK_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
 def _excerpt(text: str) -> str:
-    limit = getattr(settings, "SAFETY_ALERT_EXCERPT_CHARS", 500)
+    limit = getattr(settings, "SAFETY_ALERT_EXCERPT_CHARS", 200)
     clean = " ".join((text or "").split())
-    return clean[:limit]
+    if limit <= 0:
+        # 0 отключает выдержку целиком: письмо несёт только метаданные.
+        return ""
+    return mask_personal_data(clean)[:limit]
 
 
 def detect(text: str, *, child_mentioned: bool | None = None) -> SafetySignal | None:

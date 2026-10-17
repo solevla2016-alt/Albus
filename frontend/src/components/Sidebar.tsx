@@ -18,6 +18,7 @@ import {
   Pencil,
   Plus,
   Search,
+  ShieldAlert,
   ShieldCheck,
   Sun,
   Trash2,
@@ -32,6 +33,7 @@ import { cn, getInitials } from "@/lib/utils";
 import { CACHE_KEYS, readCache, writeCache } from "@/lib/cache";
 import { ServerRail, type RailKey } from "./ServerRail";
 import { BugReportDialog } from "./BugReportDialog";
+import { SafetyAlertsDialog } from "./SafetyAlertsDialog";
 import { RenameDialog } from "./RenameDialog";
 
 function directTitle(room: ChatRoom): string {
@@ -60,6 +62,7 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
   } = useChatStore();
   const { dark: themeDark, toggle: toggleTheme } = useTheme();
   const [bugReportOpen, setBugReportOpen] = useState(false);
+  const [safetyAlertsOpen, setSafetyAlertsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [activeId, setActiveId] = useState<RailKey>("home");
   const [showCreateRoom, setShowCreateRoom] = useState(false);
@@ -74,6 +77,10 @@ export function Sidebar({ onClose }: { onClose: () => void }) {
   const [serverName, setServerName] = useState("");
   const [serverDesc, setServerDesc] = useState("");
   const [serverRenameOpen, setServerRenameOpen] = useState(false);
+  // Сигналы безопасности видит только модератор или администратор: там лежит
+  // выдержка чужого сообщения.
+  const canSeeSafetyAlerts =
+    !!user && (user.is_staff || user.role === "admin" || user.role === "moderator");
   const [serverLoading, setServerLoading] = useState(false);
   const [directError, setDirectError] = useState("");
   const [users, setUsers] = useState<User[]>([]);
@@ -922,6 +929,19 @@ onClick={async () => {
                   <Bug size={15} />
                   Сообщить о проблеме
                 </button>
+
+                {canSeeSafetyAlerts && (
+                  <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      setSafetyAlertsOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                  >
+                    <ShieldAlert size={15} />
+                    Сигналы безопасности
+                  </button>
+                )}
                 <Link
                   href="/terms"
                   target="_blank"
@@ -978,6 +998,8 @@ onClick={async () => {
       </div>
 
       {bugReportOpen && <BugReportDialog onClose={() => setBugReportOpen(false)} />}
+
+      {safetyAlertsOpen && <SafetyAlertsDialog onClose={() => setSafetyAlertsOpen(false)} />}
 
       {serverRenameOpen && currentServer && (
         <RenameDialog

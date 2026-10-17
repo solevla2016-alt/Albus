@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
 from django.db.models import Exists, F, OuterRef, Q
+from django.utils import timezone
 from rest_framework import permissions, status
 from rest_framework.authentication import SessionAuthentication
 from rest_framework.decorators import (
@@ -16,7 +17,7 @@ from rest_framework.decorators import (
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from .models import BugReport, ChatRoom, Message, RoomBan, Server
+from .models import BugReport, ChatRoom, ChildSafetyAlert, Message, RoomBan, Server
 from .permissions import (
     accessible_rooms,
     ban_user,
@@ -35,6 +36,7 @@ from .serializers import (
     ChatRoomSerializer,
     MessageSerializer,
     RoomEditSerializer,
+    SafetyAlertSerializer,
     ServerCreateSerializer,
     ServerEditSerializer,
     ServerSerializer,
@@ -334,6 +336,67 @@ def bug_report_list_view(request: Request) -> Response:
         }
         for r in reports
     ])
+
+
+@api_view(["GET"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def safety_alerts_list_view(request: Request) -> Response:
+    """Сигналы безопасности для модератора: что сработало и что с этим сделали.
+
+    Доступно только модераторам и администраторам, потому что записи содержат
+    выдержку чужого сообщения.
+    """
+    if not (is_admin(request.user) or is_moderator(request.user)):
+        return Response(
+            {"error": "Нет доступа"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    alerts = ChildSafetyAlert.objects.select_related("user", "room", "reviewed_by")[:200]
+    only_new = str(request.query_params.get("status", "")).strip() == "new"
+    if only_new:
+        alerts = [a for a in alerts if a.status == ChildSafetyAlert.Status.NEW]
+    return Response(SafetyAlertSerializer(alerts, many=True).data)
+
+
+@api_view(["PATCH"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def safety_alerts_update_view(request: Request, alert_id: int) -> Response:
+    """Отметить сигнал разобранным; модераторы только."""
+    if not (is_admin(request.user) or is_moderator(request.user)):
+        return Response(
+            {"error": "Нет доступа"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        alert = ChildSafetyAlert.objects.select_related("user").get(id=alert_id)
+    except ChildSafetyAlert.DoesNotExist:
+        return Response(status=status.HTTP_404_NOT_FOUND)
+
+    status_value = request.data.get("status")
+    if status_value and status_value not in ChildSafetyAlert.Status.values:
+        return Response(
+            {"error": "Недопустимый статус"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if status_value == ChildSafetyAlert.Status.REVIEWED:
+        # Кто разобрал — фиксируется, чтобы было видно историю, а не «само
+        # сделалось».
+        alert.status = ChildSafetyAlert.Status.REVIEWED
+        alert.reviewed_by = request.user
+        alert.reviewed_at = timezone.now()
+        alert.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+    elif status_value == ChildSafetyAlert.Status.NEW:
+        alert.status = ChildSafetyAlert.Status.NEW
+        alert.reviewed_by = None
+        alert.reviewed_at = None
+        alert.save(update_fields=["status", "reviewed_by", "reviewed_at"])
+
+    return Response(SafetyAlertSerializer(alert).data)
 
 
 @api_view(["PATCH"])

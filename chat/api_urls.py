@@ -17,6 +17,8 @@ from .api_views import (
     room_unban_view,
     room_upload_view,
     rooms_list_view,
+    safety_alerts_list_view,
+    safety_alerts_update_view,
     server_create_view,
     server_detail_view,
     server_invite_view,
@@ -48,4 +50,10 @@ urlpatterns = [
     path("bug-reports/", bug_report_create_view, name="api_bug_report_create"),
     path("bug-reports/list/", bug_report_list_view, name="api_bug_report_list"),
     path("bug-reports/<int:report_id>/", bug_report_update_view, name="api_bug_report_update"),
+    path("safety-alerts/", safety_alerts_list_view, name="api_safety_alerts"),
+    path(
+        "safety-alerts/<int:alert_id>/",
+        safety_alerts_update_view,
+        name="api_safety_alert_update",
+    ),
 ]

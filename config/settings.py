@@ -209,7 +209,11 @@ SAFETY_ALERTS_ENABLED = (
 SAFETY_ALERT_COOLDOWN_MINUTES = int(
     os.getenv("SAFETY_ALERT_COOLDOWN_MINUTES", "60")
 )
-SAFETY_ALERT_EXCERPT_CHARS = int(os.getenv("SAFETY_ALERT_EXCERPT_CHARS", "500"))
+# Через сколько дней выдержка обнуляется, а метаданные остаются навсегда.
+SAFETY_ALERT_EXCERPT_RETENTION_DAYS = int(
+    os.getenv("SAFETY_ALERT_EXCERPT_RETENTION_DAYS", "30")
+)
+SAFETY_ALERT_EXCERPT_CHARS = int(os.getenv("SAFETY_ALERT_EXCERPT_CHARS", "200"))
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 # --- Rate limiting ---
