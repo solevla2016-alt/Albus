@@ -59,7 +59,7 @@ ignore = ["E501", "RUF001", "RUF002", "RUF003"]
 DJANGO_SETTINGS_MODULE = "config.test_settings"
 python_files = ["tests.py", "test_*.py"]
 asyncio_mode = "auto"
-testpaths = ["chat", "users"]
+testpaths = ["chat", "users", "tests"]
 addopts = "--cov --cov-report=term-missing --cov-config=pyproject.toml"
 markers = [
     "no_throttle: keep DRF rate limiting active for this test",

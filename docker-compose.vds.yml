@@ -84,13 +84,13 @@ services:
       YANDEX_SMTP_PORT: ${YANDEX_SMTP_PORT:-465}
       # Письма об ошибках и сигналы безопасности. Без явной передачи в контейнер
       # они шли на YANDEX_MAIL_FROM: стоило бы сменить отправителя — и письма о
-      # том, что ребёнку плохо, молча уехали бы на другой адрес.
+      # безопасности молча уехали бы на другой адрес.
       BUG_REPORT_EMAIL: ${BUG_REPORT_EMAIL:-}
       SAFETY_ALERT_EMAIL: ${SAFETY_ALERT_EMAIL:-}
       SAFETY_ALERTS_ENABLED: ${SAFETY_ALERTS_ENABLED:-True}
       SAFETY_ALERT_COOLDOWN_MINUTES: ${SAFETY_ALERT_COOLDOWN_MINUTES:-60}
-      SAFETY_ALERT_EXCERPT_CHARS: 
-      SAFETY_ALERT_EXCERPT_RETENTION_DAYS: ${SAFETY_ALERT_EXCERPT_CHARS:-500}
+      SAFETY_ALERT_EXCERPT_CHARS: ${SAFETY_ALERT_EXCERPT_CHARS:-200}
+      SAFETY_ALERT_EXCERPT_RETENTION_DAYS: ${SAFETY_ALERT_EXCERPT_RETENTION_DAYS:-30}
       FRONTEND_URL: ${FRONTEND_URL}
     ports:
       # bound to loopback: the reverse proxy is the only way in
