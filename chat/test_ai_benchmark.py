@@ -151,6 +151,48 @@ class TestMessageAssembly:
             {"text": "q", "username": "u", "is_ai": False}
         ]
 
+    def test_own_answers_are_dropped_from_context(self):
+        """Прежний ответ ассистента якорит его на старой роли.
+
+        Пока в переписке лежит «спрашивай меня про Python», модель повторяет это
+        на вопрос «о чём со мной можно говорить», хотя в промте сказано иначе.
+        """
+        messages = build_messages(
+            "о чём с тобой можно говорить?",
+            [
+                {
+                    "text": "Ты можешь задать мне вопрос по темам: Python и Django.",
+                    "username": "AI Assistant",
+                    "is_ai": True,
+                },
+                {"text": "о чём с тобой можно говорить?", "username": "owner", "is_ai": False},
+            ],
+        )
+        block = messages[1]["content"]
+        assert "Python" not in block
+        assert "о чём с тобой можно говорить?" in block
+
+    def test_user_messages_still_provide_context(self):
+        messages = build_messages(
+            "сделай короче",
+            [
+                {"text": "Напиши письмо клиенту", "username": "owner", "is_ai": False},
+                {"text": "Добрый день!..", "username": "AI Assistant", "is_ai": True},
+                {"text": "спасибо", "username": "owner", "is_ai": False},
+            ],
+        )
+        block = messages[1]["content"]
+        assert "Напиши письмо клиенту" in block
+        assert "спасибо" in block
+        assert "Добрый день!" not in block
+
+    def test_no_block_when_history_is_only_own_answers(self):
+        messages = build_messages(
+            "вопрос",
+            [{"text": "мой прежний ответ", "username": "AI Assistant", "is_ai": True}],
+        )
+        assert len(messages) == 2
+
 
 class TestBenchmarkScorer:
     """Чекер бесполезен, если он не ловит нарушения."""

@@ -49,7 +49,7 @@ export function EmptyState({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         className="mt-6 flex items-center gap-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-secondary)]/70 px-3 py-1.5 text-xs text-[var(--text-muted)]"
       >
         <Sparkles size={12} className="text-[var(--brand-primary)]" />
-        Советы: напишите /ai вопрос — ментор по Python ответит прямо в чате
+        Советы: напишите /ai вопрос — ассистент ответит прямо в чате
       </motion.div>
     </div>
   );
