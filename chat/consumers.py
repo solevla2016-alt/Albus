@@ -592,7 +592,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def _generate_ai_reply(self, prompt: str) -> None:
-        history = await self._get_recent_messages(self.room.id, settings.AI_CONTEXT_MESSAGES)
+        history = await self._get_recent_messages(
+            self.room.id,
+            settings.AI_CONTEXT_MESSAGES,
+            # В личной комнате ассистента история общая на всех пользователей,
+            # потому что это одна комната на всех. Чужие вопросы в контексте
+            # сбивали модель с темы и уводили их в GigaChat без ведома авторов,
+            # поэтому там берём только собственные сообщения спрашивающего.
+            only_user_id=(
+                self.scope["user"].id if self._is_shared_ai_room() else None
+            ),
+        )
         history = build_history(history)
         answer = await get_ai_answer(prompt, history)
 
@@ -1255,13 +1265,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         return user
 
     @database_sync_to_async
-    def _get_recent_messages(self, room_id: int, limit: int) -> list[dict[str, Any]]:
-        messages = (
-            Message.objects
-            .filter(room_id=room_id)
-            .select_related("user")
-            .order_by("-created_at")[:limit]
-        )
+    def _get_recent_messages(
+        self,
+        room_id: int,
+        limit: int,
+        only_user_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        queryset = Message.objects.filter(room_id=room_id)
+        if only_user_id is not None:
+            queryset = queryset.filter(user_id=only_user_id)
+        messages = queryset.select_related("user").order_by("-created_at")[:limit]
         messages = list(reversed(messages))
         return [
             {
@@ -1403,6 +1416,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _room_has_ai(self) -> bool:
         return self.room.members.filter(username=settings.AI_ASSISTANT_USERNAME).exists()
+
+    def _is_shared_ai_room(self) -> bool:
+        """Личная комната ассистента: одна на всех пользователей.
+
+        Имена, а не признак «в комнате есть ИИ»: общие комнаты тоже могут
+        содержать ассистента, и там чужие сообщения — это осмысленный контекст.
+        """
+        return self.room.name == settings.AI_ASSISTANT_USERNAME
 
     @database_sync_to_async
     def _validate_reply(self, reply_to_id: int) -> bool:
