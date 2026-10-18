@@ -9,6 +9,7 @@ import {
   ChevronDown,
   Cookie,
   FileText,
+  HelpCircle,
   Home,
   Link2,
   LogOut,
@@ -942,6 +943,13 @@ onClick={async () => {
                     Сигналы безопасности
                   </button>
                 )}
+                <Link
+                  href="/instruction"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)]"
+                >
+                  <HelpCircle size={15} />
+                  Инструкция
+                </Link>
                 <Link
                   href="/terms"
                   target="_blank"
