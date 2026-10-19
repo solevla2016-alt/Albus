@@ -51,3 +51,27 @@ export function stopRingtone(): void {
     timer = null;
   }
 }
+
+/** Короткий сигнал о новом сообщении: мягкий двухтональный блип. */
+export function playMessageSound(): void {
+  const ac = ensureCtx();
+  if (!ac) return;
+
+  const beep = (freq: number, startAt: number) => {
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    const t = ac.currentTime + startAt;
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.exponentialRampToValueAtTime(0.08, t + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(t);
+    osc.stop(t + 0.25);
+  };
+
+  beep(660, 0);
+  beep(990, 0.12);
+}

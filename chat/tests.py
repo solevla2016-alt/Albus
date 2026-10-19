@@ -532,6 +532,9 @@ class TestModerationWs:
         await member_client.send_json_to({"action": "message", "message": "ws test"})
         payload = await _drain_until(owner_client, "message", timeout=3)
         assert payload.get("message") == "ws test"
+        # room_id нужен клиенту, чтобы отличать сообщение в открытой комнате от
+        # сообщения в фоне: от этого зависит звуковое оповещение.
+        assert payload.get("room_id") == group_room.id
         await owner_client.disconnect()
         await member_client.disconnect()
 

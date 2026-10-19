@@ -775,6 +775,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "type": "message",
             "id": event["id"],
             "username": event["username"],
+            "room_id": self.room.id,
             "avatar": event.get("avatar"),
             "message": event["message"],
             "created_at": event["created_at"],

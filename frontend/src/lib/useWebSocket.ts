@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useChatStore } from "./store";
 import { API_URL, wsRoomUrl } from "./api";
+import { playMessageSound } from "./ringtone";
 import type { CallMode, ChatRoom, Message, Server, WebSocketMessage } from "./types";
 import {
   handleAnswer,
@@ -154,6 +155,12 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
             };
             addMessage(msg);
             removeTypingUser(data.username);
+
+            // Звук только для чужого сообщения в комнате, которую сейчас не
+            // смотрят: иначе оно дублирует визуальное уведомление и мешает.
+            if (!data.is_own && data.room_id !== roomIdRef.current) {
+              playMessageSound();
+            }
           }
           break;
 
