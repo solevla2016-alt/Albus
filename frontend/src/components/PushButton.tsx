@@ -9,6 +9,7 @@ import {
   isIos,
   isPushSupported,
   isRunningAsPwa,
+  pushCapabilities,
   pushPermission,
   type PushState,
 } from "@/lib/push";
@@ -52,9 +53,10 @@ export function PushButton() {
     }
     try {
       const registration = await navigator.serviceWorker.getRegistration();
-      const subscription = registration
-        ? await registration.pushManager.getSubscription()
-        : null;
+      const subscription =
+        registration?.pushManager
+          ? await registration.pushManager.getSubscription()
+          : null;
       setState(subscription ? "subscribed" : "prompt");
     } catch {
       setState("error");
@@ -92,7 +94,9 @@ export function PushButton() {
   }
 
   const disabled = state === "unsupported" || state === "denied";
-  const showIosHint = isIos() && !isRunningAsPwa();
+  const asPwa = isRunningAsPwa();
+  const showIosHint = isIos() && (!asPwa || state === "unsupported");
+  const caps = pushCapabilities();
 
   return (
     <div>
@@ -113,8 +117,9 @@ export function PushButton() {
 
       {showIosHint && (
         <p className="mx-2 mb-1 mt-1 text-[11px] leading-snug text-[var(--text-muted)]">
-          На iPhone уведомления приходят, только если Albus добавлен на домашний
-          экран: откройте сайт в Safari и выберите «На экран „Домой“».
+          {!asPwa
+            ? "На iPhone уведомления приходят, только если Albus добавлен на домашний экран: откройте сайт в Safari и выберите «На экран „Домой“»."
+            : `iOS не дала доступ к уведомлениям. Удалите иконку Albus и добавьте заново через Safari: «Поделиться» → «На экран „Домой“», затем откройте Albus с иконки. Диагностика: Notification — ${caps.notification ? "да" : "нет"}, ServiceWorker — ${caps.serviceWorker ? "да" : "нет"}, PushManager — ${caps.pushManager ? "да" : "нет"}.`}
         </p>
       )}
     </div>

@@ -2,14 +2,35 @@
 
 import { apiFetch } from "./api";
 
-/** Поддерживается ли web-push в этом браузере. */
+export type PushCapabilities = {
+  serviceWorker: boolean;
+  notification: boolean;
+  pushManager: boolean;
+};
+
+/** Что именно доступно в текущем контексте — для диагностики. */
+export function pushCapabilities(): PushCapabilities {
+  if (typeof window === "undefined") {
+    return { serviceWorker: false, notification: false, pushManager: false };
+  }
+  return {
+    serviceWorker: "serviceWorker" in navigator,
+    notification: "Notification" in window,
+    pushManager: "PushManager" in window,
+  };
+}
+
+/**
+ * Можно ли попробовать включить web-push.
+ *
+ * На iOS `Notification` появляется только у приложения с домашнего экрана —
+ * это и есть проверка установки. Глобальный конструктор `PushManager`
+ * проверять нельзя: Safari может не выставлять его в window, хотя менеджер
+ * push есть у зарегистрированного service worker.
+ */
 export function isPushSupported(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    "serviceWorker" in navigator &&
-    "PushManager" in window &&
-    "Notification" in window
-  );
+  const caps = pushCapabilities();
+  return caps.serviceWorker && caps.notification;
 }
 
 export type PushState =
@@ -66,7 +87,10 @@ export async function enablePush(): Promise<PushState> {
     const publicKey = await fetchPublicKey();
     if (!publicKey) return "error";
 
-    const registration = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.register("/sw.js");
+    const registration = await navigator.serviceWorker.ready;
+    if (!registration.pushManager) return "unsupported";
+
     const existing = await registration.pushManager.getSubscription();
     const subscription =
       existing ||
@@ -95,7 +119,8 @@ export async function enablePush(): Promise<PushState> {
 /** Выключает уведомления и удаляет подписку на сервере. */
 export async function disablePush(): Promise<void> {
   try {
-    const registration = await navigator.serviceWorker.ready;
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration?.pushManager) return;
     const subscription = await registration.pushManager.getSubscription();
     const endpoint = subscription?.endpoint;
     if (endpoint) {
