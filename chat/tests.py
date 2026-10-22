@@ -2029,3 +2029,113 @@ class TestCallMeta:
         assert meta["callee"] == member.username
         await caller_client.disconnect()
         await callee_client.disconnect()
+
+
+@pytest.mark.django_db(transaction=True)
+class TestPushNotifications:
+    """Push is the only way an offline user learns about a message or a call."""
+
+    @staticmethod
+    def _capture(monkeypatch):
+        calls: list[dict] = []
+
+        def fake_send(user_ids, title, body, **kwargs):
+            calls.append(
+                {"ids": list(user_ids), "title": title, "body": body, **kwargs}
+            )
+            return len(list(user_ids))
+
+        monkeypatch.setattr("users.push.send_push_to_user_ids", fake_send)
+        return calls
+
+    async def _wait_for_calls(self, calls, timeout=3.0):
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not calls and asyncio.get_running_loop().time() < deadline:
+            await asyncio.sleep(0.05)
+
+    async def test_message_pushes_only_offline_members(
+        self, group_room, owner, member, moderator, ws_connect, monkeypatch
+    ):
+        calls = self._capture(monkeypatch)
+
+        client, ok = await ws_connect(owner, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to({"action": "message", "message": "ping"})
+        await _drain_until(client, "message", timeout=3)
+        await self._wait_for_calls(calls)
+
+        assert len(calls) == 1
+        call = calls[0]
+        # the sender is online and gets the message in the app already
+        assert set(call["ids"]) == {member.id, moderator.id}
+        assert call["title"] == group_room.name
+        assert call["body"] == f"{owner.username}: ping"
+        assert call["url"] == f"/chat?room={group_room.id}"
+        assert call["tag"] == f"room-{group_room.id}"
+        await client.disconnect()
+
+    async def test_direct_message_titles_sender(
+        self, owner, member, ws_connect, monkeypatch
+    ):
+        calls = self._capture(monkeypatch)
+        room = await sync_to_async(ChatRoom.objects.create)(
+            name="push-direct", owner=owner, room_type="direct"
+        )
+        await sync_to_async(room.members.add)(owner, member)
+
+        client, ok = await ws_connect(owner, room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to({"action": "message", "message": "hi there"})
+        await _drain_until(client, "message", timeout=3)
+        await self._wait_for_calls(calls)
+
+        assert len(calls) == 1
+        assert calls[0]["ids"] == [member.id]
+        assert calls[0]["title"] == f"Сообщение от {owner.username}"
+        assert calls[0]["body"] == "hi there"
+        await client.disconnect()
+
+    async def test_call_start_pushes_when_callee_offline(
+        self, group_room, owner, member, ws_connect, monkeypatch
+    ):
+        calls = self._capture(monkeypatch)
+
+        client, ok = await ws_connect(owner, group_room.name)
+        assert ok
+        await _drain_until(client, "history")
+        await client.send_json_to(
+            {"action": "call_start", "target": member.username, "call_id": "c-push"}
+        )
+        await self._wait_for_calls(calls)
+
+        assert len(calls) == 1
+        call = calls[0]
+        assert call["ids"] == [member.id]
+        assert "Звонок" in call["title"]
+        assert call["urgent"] is True
+        assert call["ttl"] == 60
+        assert call["url"] == f"/chat?room={group_room.id}"
+        await client.disconnect()
+
+    async def test_online_callee_gets_no_push(
+        self, group_room, owner, member, ws_connect, monkeypatch
+    ):
+        calls = self._capture(monkeypatch)
+
+        caller, ok1 = await ws_connect(owner, group_room.name)
+        callee, ok2 = await ws_connect(member, group_room.name)
+        assert ok1
+        assert ok2
+        await _drain_until(caller, "history")
+        await _drain_until(callee, "history")
+        await caller.send_json_to(
+            {"action": "call_start", "target": member.username, "call_id": "c-live"}
+        )
+        await _drain_until(callee, "call_incoming", timeout=3)
+        await asyncio.sleep(0.2)
+
+        assert calls == []
+        await caller.disconnect()
+        await callee.disconnect()

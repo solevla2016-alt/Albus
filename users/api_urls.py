@@ -12,6 +12,9 @@ from .api_views import (
     password_reset_confirm_view,
     password_reset_request_view,
     profile_update_view,
+    push_subscribe_view,
+    push_unsubscribe_view,
+    push_vapid_key_view,
     register_view,
     set_role_view,
     users_list_view,
@@ -32,4 +35,7 @@ urlpatterns = [
     path("delete-account/", delete_account_view, name="api_delete_account"),
 path("password-reset/request/", password_reset_request_view, name="api_password_reset_request"),
     path("password-reset/confirm/", password_reset_confirm_view, name="api_password_reset_confirm"),
+    path("push/vapid-key/", push_vapid_key_view, name="api_push_vapid_key"),
+    path("push/subscribe/", push_subscribe_view, name="api_push_subscribe"),
+    path("push/unsubscribe/", push_unsubscribe_view, name="api_push_unsubscribe"),
 ]

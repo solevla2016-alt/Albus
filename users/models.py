@@ -130,3 +130,30 @@ class PasswordResetToken(models.Model):
 
     def __str__(self) -> str:
         return f"Reset token {self.user_id} ({self.token[:8]}…)"
+
+
+class PushSubscription(models.Model):
+    """Подписка браузера на web-push уведомления.
+
+    Один пользователь может иметь несколько подписок: телефон и компьютер
+    подписываются независимо. Endpoint уникален и служит ключом: тот же браузер
+    при переподписке не создаёт дубль.
+    """
+
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="push_subscriptions",
+    )
+    endpoint = models.URLField(unique=True, max_length=2000)
+    p256dh = models.CharField(max_length=200)
+    auth = models.CharField(max_length=200)
+    user_agent = models.CharField(max_length=300, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["user", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.user_id} push {self.endpoint[:48]}…"

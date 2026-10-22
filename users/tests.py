@@ -697,3 +697,178 @@ class TestDeleteAccount:
         still_there = ChatRoom.objects.get(id=room.id)
         assert still_there.owner is None
         assert member in still_there.members.all()
+
+
+@pytest.mark.django_db()
+class TestPushApi:
+    ENDPOINT = "https://fcm.googleapis.com/fcm/send/sub-1"
+
+    def _subscribe(self, api_client, user, endpoint=None):
+        api_client.force_authenticate(user=user)
+        return api_client.post(
+            "/api/auth/push/subscribe/",
+            {
+                "endpoint": endpoint or self.ENDPOINT,
+                "keys": {"p256dh": "key", "auth": "secret"},
+                "user_agent": "pytest",
+            },
+            format="json",
+        )
+
+    def test_vapid_key_hidden_without_configuration(self, api_client, user, settings):
+        settings.VAPID_PUBLIC_KEY = ""
+        api_client.force_authenticate(user=user)
+        resp = api_client.get("/api/auth/push/vapid-key/")
+        assert resp.status_code == 503
+
+    def test_vapid_key_is_public(self, api_client, user, settings):
+        settings.VAPID_PUBLIC_KEY = "BPublicKey"
+        api_client.force_authenticate(user=user)
+        resp = api_client.get("/api/auth/push/vapid-key/")
+        assert resp.status_code == 200
+        assert resp.data["publicKey"] == "BPublicKey"
+
+    def test_subscribe_requires_keys(self, api_client, user):
+        api_client.force_authenticate(user=user)
+        resp = api_client.post(
+            "/api/auth/push/subscribe/",
+            {"endpoint": self.ENDPOINT},
+            format="json",
+        )
+        assert resp.status_code == 400
+
+    def test_subscribe_is_idempotent_per_endpoint(self, api_client, user):
+        from .models import PushSubscription
+
+        assert self._subscribe(api_client, user).status_code == 200
+        assert self._subscribe(api_client, user).status_code == 200
+        assert PushSubscription.objects.filter(user=user).count() == 1
+
+    def test_unsubscribe_removes_only_own_endpoint(self, api_client, user, member):
+        from .models import PushSubscription
+
+        self._subscribe(api_client, user)
+        api_client.force_authenticate(user=user)
+        resp = api_client.post(
+            "/api/auth/push/unsubscribe/",
+            {"endpoint": self.ENDPOINT},
+            format="json",
+        )
+        assert resp.status_code == 200
+        assert not PushSubscription.objects.filter(user=user).exists()
+
+        foreign = PushSubscription.objects.create(
+            user=member,
+            endpoint="https://fcm.googleapis.com/fcm/send/other",
+            p256dh="k",
+            auth="a",
+        )
+        api_client.post(
+            "/api/auth/push/unsubscribe/",
+            {"endpoint": foreign.endpoint},
+            format="json",
+        )
+        assert PushSubscription.objects.filter(id=foreign.id).exists()
+
+
+@pytest.mark.django_db()
+class TestPushDelivery:
+    def test_uses_push_service_origin_as_audience(self, user, settings, monkeypatch):
+        import json
+
+        from .models import PushSubscription
+        from .push import send_push
+
+        settings.VAPID_PUBLIC_KEY = "public"
+        settings.VAPID_PRIVATE_KEY = "private"
+        settings.VAPID_SUBJECT = "mailto:ops@example.com"
+        PushSubscription.objects.create(
+            user=user,
+            endpoint="https://fcm.googleapis.com/fcm/send/sub-1",
+            p256dh="key",
+            auth="secret",
+        )
+
+        captured: dict = {}
+        monkeypatch.setattr("users.push.webpush", lambda **kwargs: captured.update(kwargs))
+
+        assert send_push(user, "Заголовок", "Текст", url="/chat?room=7") == 1
+        assert captured["vapid_claims"]["aud"] == "https://fcm.googleapis.com"
+        assert captured["vapid_claims"]["sub"] == "mailto:ops@example.com"
+        payload = json.loads(captured["data"])
+        assert payload == {
+            "title": "Заголовок",
+            "body": "Текст",
+            "url": "/chat?room=7",
+        }
+
+    def test_gone_subscription_is_deleted(self, user, settings, monkeypatch):
+        from types import SimpleNamespace
+
+        from pywebpush import WebPushException
+
+        from .models import PushSubscription
+        from .push import send_push
+
+        settings.VAPID_PUBLIC_KEY = "public"
+        settings.VAPID_PRIVATE_KEY = "private"
+        settings.VAPID_SUBJECT = "mailto:ops@example.com"
+        subscription = PushSubscription.objects.create(
+            user=user,
+            endpoint="https://fcm.googleapis.com/fcm/send/gone",
+            p256dh="key",
+            auth="secret",
+        )
+
+        def gone(**kwargs):
+            raise WebPushException(
+                "subscription is gone",
+                response=SimpleNamespace(status_code=410),
+            )
+
+        monkeypatch.setattr("users.push.webpush", gone)
+
+        assert send_push(user, "t", "b") == 0
+        assert not PushSubscription.objects.filter(id=subscription.id).exists()
+
+    def test_missing_keys_send_nothing(self, user, settings):
+        from .push import push_enabled, send_push
+
+        settings.VAPID_PUBLIC_KEY = ""
+        settings.VAPID_PRIVATE_KEY = ""
+        settings.VAPID_SUBJECT = ""
+
+        assert not push_enabled()
+        assert send_push(user, "t", "b") == 0
+
+
+@pytest.mark.django_db()
+class TestVapidKeys:
+    def test_generated_pair_matches_browser_and_pywebpush_format(self):
+        import base64
+
+        from cryptography.hazmat.primitives import serialization
+        from py_vapid import Vapid
+
+        from users.management.commands.vapid_keys import generate
+
+        def decode(value: str) -> bytes:
+            padded = value + "=" * (-len(value) % 4)
+            return base64.urlsafe_b64decode(padded)
+
+        public_key, private_key = generate()
+        public_raw = decode(public_key)
+        private_raw = decode(private_key)
+
+        # applicationServerKey: uncompressed SECP256R1 point
+        assert len(public_raw) == 65
+        assert public_raw[0] == 0x04
+        # py_vapid.from_string: exactly 32 bytes means "raw"
+        assert len(private_raw) == 32
+
+        vapid = Vapid.from_string(private_key)
+        loaded_public = vapid.public_key.public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.UncompressedPoint,
+        )
+        assert loaded_public == public_raw

@@ -428,6 +428,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
         await self._notify_room_update(message)
+        await self._push_message_notification(message, user)
 
         if (
             message.attachment_type == "none"
@@ -1005,12 +1006,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if await redis.sismember(f"call:act:{room_id}", target):
                 await self._send_call_busy(caller, call_id, target)
                 return
+            live_channels = await self._live_user_channels(target_id)
             await self._call_relay_to(target_id, {
                 "type": "call_incoming",
                 "call_id": call_id,
                 "from": caller,
                 "mode": data.get("mode") or "audio",
             })
+            if not live_channels:
+                await self._push_call_notification(
+                    target_id, caller, room_id, data.get("mode")
+                )
             return
 
         if call_action == "call_accept":
@@ -1190,6 +1196,97 @@ class ChatConsumer(AsyncWebsocketConsumer):
         if self.room.owner_id:
             ids.add(self.room.owner_id)
         return ids
+
+    async def _push_message_notification(self, message: Message, sender) -> None:
+        """Push участникам комнаты, у которых нет открытого сокета.
+
+        Онлайн-получатели уже видят сообщение в приложении (и слышат звук в
+        фоновой комнате), поэтому им push не нужен. Офлайн — это в том числе
+        свёрнутое приложение на телефоне: сокет там закрыт, и без push человек
+        сообщение не заметит.
+        """
+        try:
+            recipients = await self._offline_room_member_ids(sender.id)
+            if not recipients:
+                return
+
+            preview = (message.text or "").strip()
+            if not preview:
+                preview = message.attachment_name or "Вложение"
+
+            if self.room.room_type == ChatRoom.RoomType.DIRECT:
+                title = f"Сообщение от {sender.username}"
+                body = preview
+            else:
+                title = self.room.name
+                body = f"{sender.username}: {preview}"
+
+            await self._deliver_push(
+                recipients,
+                title=title,
+                body=body[:180],
+                url=f"/chat?room={self.room.id}",
+                ttl=3600,
+                urgent=False,
+                tag=f"room-{self.room.id}",
+            )
+        except Exception:
+            logger.exception("не удалось отправить push о сообщении %s", message.id)
+
+    async def _offline_room_member_ids(self, exclude_id: int) -> list[int]:
+        member_ids = await self._room_member_ids()
+        member_ids.discard(exclude_id)
+        offline: list[int] = []
+        for user_id in member_ids:
+            if not await self._live_user_channels(user_id):
+                offline.append(user_id)
+        return offline
+
+    @database_sync_to_async
+    def _deliver_push(
+        self,
+        user_ids: list[int],
+        *,
+        title: str,
+        body: str,
+        url: str,
+        ttl: int,
+        urgent: bool,
+        tag: str | None,
+    ) -> int:
+        from users.push import send_push_to_user_ids
+
+        return send_push_to_user_ids(
+            user_ids,
+            title,
+            body,
+            url=url,
+            ttl=ttl,
+            urgent=urgent,
+            tag=tag,
+        )
+
+    async def _push_call_notification(
+        self, target_id: int, caller: str, room_id: int, mode: str | None
+    ) -> None:
+        """Push о звонке, если у получателя нет ни одного живого сокета.
+
+        Это именно уведомление, а не звонок: принять вызов из него нельзя, но
+        хотя бы не пропустишь сам факт.
+        """
+        try:
+            kind = "Видеозвонок" if mode == "video" else "Звонок"
+            await self._deliver_push(
+                [target_id],
+                title=f"{kind}: {caller}",
+                body="Albus: входящий вызов. Откройте приложение, чтобы ответить.",
+                url=f"/chat?room={room_id}",
+                ttl=60,
+                urgent=True,
+                tag=f"call-{room_id}",
+            )
+        except Exception:
+            logger.exception("не удалось отправить push о звонке в комнату %s", room_id)
 
     @database_sync_to_async
     def _room_last_message_payload(self) -> dict | None:

@@ -216,6 +216,17 @@ SAFETY_ALERT_EXCERPT_RETENTION_DAYS = int(
 SAFETY_ALERT_EXCERPT_CHARS = int(os.getenv("SAFETY_ALERT_EXCERPT_CHARS", "200"))
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
+# --- Web Push ---
+# VAPID-ключи задаются на сервере. Публичный уходит в браузер, приватный
+# нужен только серверу для подписи. Генерируются командой manage.py vapid_keys.
+VAPID_PUBLIC_KEY = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT = os.getenv("VAPID_SUBJECT", "")
+# Кому приходят push-уведомления о сигналах безопасности и отчётах. Пусто —
+# уведомления не отправляются. Письма и пуши не совпадают по адресу: письма
+# уходят на ящик оператора, а push адресуется учётной записи в Albus.
+PUSH_NOTIFY_USERNAME = os.getenv("PUSH_NOTIFY_USERNAME", "")
+
 # --- Rate limiting ---
 # Login, registration and password reset are anonymous endpoints, so they are
 # throttled per IP; everything else is limited per signed in user.

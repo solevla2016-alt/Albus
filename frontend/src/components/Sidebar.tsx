@@ -34,6 +34,7 @@ import { cn, getInitials } from "@/lib/utils";
 import { CACHE_KEYS, readCache, writeCache } from "@/lib/cache";
 import { ServerRail, type RailKey } from "./ServerRail";
 import { BugReportDialog } from "./BugReportDialog";
+import { PushButton } from "./PushButton";
 import { SafetyAlertsDialog } from "./SafetyAlertsDialog";
 import { RenameDialog } from "./RenameDialog";
 
@@ -950,6 +951,7 @@ onClick={async () => {
                   <HelpCircle size={15} />
                   Инструкция
                 </Link>
+                <PushButton />
                 <Link
                   href="/terms"
                   target="_blank"

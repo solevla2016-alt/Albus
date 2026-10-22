@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 
@@ -41,6 +42,8 @@ from .serializers import (
     ServerEditSerializer,
     ServerSerializer,
 )
+
+logger = logging.getLogger(__name__)
 
 IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"}
 AUDIO_TYPES = {"audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4", "audio/aac"}
@@ -304,6 +307,16 @@ def bug_report_create_view(request: Request) -> Response:
                 f"Ошибка в Albus: {report.user.username}",
                 body,
             )
+            # тот же случай, что и письмо, но в push: письмо легко пропустить
+            try:
+                from users.push import send_alert_push
+
+                send_alert_push(
+                    f"Albus: отчёт об ошибке — {report.user.username}",
+                    report.text[:140],
+                )
+            except Exception:
+                logger.exception("не удалось отправить push о репорте %s", report.id)
         except RuntimeError:
             # the report is stored already; a missing mail must not fail the request
             pass

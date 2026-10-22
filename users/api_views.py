@@ -23,7 +23,7 @@ from rest_framework.decorators import (
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from .models import ConsentRecord, PasswordResetToken
+from .models import ConsentRecord, PasswordResetToken, PushSubscription
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -604,3 +604,61 @@ def password_reset_confirm_view(request: Request) -> Response:
     reset_token.save(update_fields=["used"])
 
     return Response({"ok": True, "username": user.username})
+
+
+@api_view(["GET"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def push_vapid_key_view(request):
+    """Публичный VAPID-ключ: его браузер передаёт при подписке."""
+    if not settings.VAPID_PUBLIC_KEY:
+        return Response(
+            {"error": "Push не настроен"},
+            status=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    return Response({"publicKey": settings.VAPID_PUBLIC_KEY})
+
+
+@api_view(["POST"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def push_subscribe_view(request):
+    """Сохраняет подписку браузера для текущего пользователя.
+
+    Один браузер подписывается один раз: endpoint уникален, поэтому повторная
+    подписка с того же устройства обновляет запись, а не создаёт дубль.
+    """
+    endpoint = str(request.data.get("endpoint") or "").strip()
+    keys = request.data.get("keys") or {}
+    p256dh = str(keys.get("p256dh") or "").strip()
+    auth = str(keys.get("auth") or "").strip()
+
+    if not (endpoint and p256dh and auth):
+        return Response(
+            {"error": "Неполные данные подписки"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    PushSubscription.objects.update_or_create(
+        endpoint=endpoint,
+        defaults={
+            "user": request.user,
+            "p256dh": p256dh,
+            "auth": auth,
+            "user_agent": str(request.data.get("user_agent", ""))[:300],
+        },
+    )
+    return Response({"ok": True})
+
+
+@api_view(["POST"])
+@authentication_classes([SessionAuthentication])
+@permission_classes([permissions.IsAuthenticated])
+def push_unsubscribe_view(request):
+    """Удаляет подписку: при отказе от уведомлений и при потерянном устройстве."""
+    endpoint = str(request.data.get("endpoint") or "").strip()
+    if endpoint:
+        PushSubscription.objects.filter(
+            endpoint=endpoint, user=request.user
+        ).delete()
+    return Response({"ok": True})

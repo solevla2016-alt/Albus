@@ -276,4 +276,17 @@ def record_signal(user: Any, room: Any, signal: SafetySignal) -> Any | None:
 
     ChildSafetyAlert.objects.filter(id=alert.id).update(notified=True)
     alert.notified = True
+
+    # Push дублирует письмо тем, кто держит браузер под рукой: письмо легко
+    # пропустить, а уведомление видно сразу.
+    try:
+        from users.push import send_alert_push
+
+        send_alert_push(
+            f"Albus: сигнал безопасности — {_RULE_TITLES.get(alert.rule, alert.rule)}",
+            f"{alert.user.username}: {signal.matched}",
+        )
+    except Exception:
+        logger.exception("не удалось отправить push о сигнале %s", alert.rule)
+
     return alert

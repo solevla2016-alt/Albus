@@ -92,6 +92,11 @@ services:
       SAFETY_ALERT_EXCERPT_CHARS: ${SAFETY_ALERT_EXCERPT_CHARS:-200}
       SAFETY_ALERT_EXCERPT_RETENTION_DAYS: ${SAFETY_ALERT_EXCERPT_RETENTION_DAYS:-30}
       FRONTEND_URL: ${FRONTEND_URL}
+      # Web Push. Пустые значения безопасны: отправка просто отключена.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      PUSH_NOTIFY_USERNAME: ${PUSH_NOTIFY_USERNAME:-}
     ports:
       # bound to loopback: the reverse proxy is the only way in
       - "127.0.0.1:8000:8000"
