@@ -4,8 +4,8 @@ from asgiref.sync import sync_to_async
 
 
 @pytest.mark.django_db(transaction=True)
-class TestSharedAiRoomContext:
-    """Личная комната ассистента одна на всех: контекст не должен быть общим."""
+class TestAiRoomContext:
+    """Контекст ассистента ограничен комнатой, в которой задан вопрос."""
 
     async def _ask(self, room, asker, prompt, monkeypatch):
         from channels.testing import WebsocketCommunicator
@@ -35,25 +35,41 @@ class TestSharedAiRoomContext:
         await communicator.disconnect()
         return seen
 
-    async def test_only_asker_messages_reach_the_model(
+    async def test_personal_rooms_do_not_share_history(
         self, owner, stranger, settings, monkeypatch
     ):
-        """Чужой вопрос не должен уходить в GigaChat как контекст чужого."""
+        """Вопросы другого пользователя не попадают в контекст личного чата."""
+        from django.contrib.auth import get_user_model
+
         from chat.models import ChatRoom, Message
+        from chat.serializers import direct_room_name
 
-        ai_name = settings.AI_ASSISTANT_USERNAME
-        room = await ChatRoom.objects.acreate(
-            name=ai_name, owner=owner, room_type="direct", is_private=True
+        user_model = get_user_model()
+        ai = await sync_to_async(user_model.objects.create_user)(
+            username=settings.AI_ASSISTANT_USERNAME, password="x"
         )
-        await sync_to_async(room.members.add)(owner, stranger)
+        owner_room = await sync_to_async(ChatRoom.objects.create)(
+            name=direct_room_name(owner.id, ai.id),
+            owner=owner,
+            room_type="direct",
+            is_private=True,
+        )
+        stranger_room = await sync_to_async(ChatRoom.objects.create)(
+            name=direct_room_name(stranger.id, ai.id),
+            owner=stranger,
+            room_type="direct",
+            is_private=True,
+        )
+        await sync_to_async(owner_room.members.add)(owner, ai)
+        await sync_to_async(stranger_room.members.add)(stranger, ai)
         await sync_to_async(Message.objects.create)(
-            room=room, user=stranger, text="секретный вопрос постороннего"
+            room=owner_room, user=owner, text="мой вопрос"
         )
         await sync_to_async(Message.objects.create)(
-            room=room, user=owner, text="мой вопрос"
+            room=stranger_room, user=stranger, text="секретный вопрос постороннего"
         )
 
-        seen = await self._ask(room, owner, "вопрос", monkeypatch)
+        seen = await self._ask(owner_room, owner, "вопрос", monkeypatch)
         texts = [m["text"] for m in seen[0]]
         assert "мой вопрос" in texts
         assert "секретный вопрос постороннего" not in texts

@@ -1336,35 +1336,43 @@ class TestServerApi:
 
 @pytest.mark.django_db()
 class TestEnsureAiChatCommand:
-    def test_creates_ai_user_and_direct_room(self, owner, stranger):
+    def test_creates_personal_room_for_every_user(self, owner, stranger):
         from django.conf import settings
         from django.core.management import call_command
+
+        from chat.serializers import direct_room_name
 
         call_command("ensure_ai_chat", verbosity=0)
 
         ai = User.objects.get(username=settings.AI_ASSISTANT_USERNAME)
-        room = ChatRoom.objects.get(name=settings.AI_ASSISTANT_USERNAME)
-        assert room.room_type == ChatRoom.RoomType.DIRECT
-        assert ai in room.members.all()
-        assert owner in room.members.all()
-        assert stranger in room.members.all()
+        owner_room = ChatRoom.objects.get(
+            name=direct_room_name(owner.id, ai.id)
+        )
+        stranger_room = ChatRoom.objects.get(
+            name=direct_room_name(stranger.id, ai.id)
+        )
+        assert owner_room.id != stranger_room.id
+        assert owner_room.room_type == ChatRoom.RoomType.DIRECT
+        assert set(owner_room.members.all()) == {owner, ai}
+        assert set(stranger_room.members.all()) == {stranger, ai}
 
     def test_is_idempotent(self, owner):
-        from django.conf import settings
         from django.core.management import call_command
 
         call_command("ensure_ai_chat", verbosity=0)
         call_command("ensure_ai_chat", verbosity=0)
 
-        rooms = ChatRoom.objects.filter(name=settings.AI_ASSISTANT_USERNAME)
-        assert rooms.count() == 1
+        assert ChatRoom.objects.filter(room_type=ChatRoom.RoomType.DIRECT).count() == 1
 
     def test_serializer_marks_ai_room_and_member(self, rf, owner):
         from django.conf import settings
         from django.core.management import call_command
 
+        from chat.serializers import direct_room_name
+
         call_command("ensure_ai_chat", verbosity=0)
-        room = ChatRoom.objects.get(name=settings.AI_ASSISTANT_USERNAME)
+        ai = User.objects.get(username=settings.AI_ASSISTANT_USERNAME)
+        room = ChatRoom.objects.get(name=direct_room_name(owner.id, ai.id))
 
         request = rf.get("/api/chat/rooms/")
         request.user = owner
@@ -1379,25 +1387,31 @@ class TestEnsureAiChatCommand:
         data = ChatRoomSerializer(group_room, context={"request": request}).data
         assert data["is_ai"] is False
 
-    def test_adds_ai_member_to_existing_room(self, owner):
+    def test_removes_people_from_the_old_shared_room(self, owner, stranger):
         from django.conf import settings
         from django.core.management import call_command
+
+        from chat.serializers import direct_room_name
 
         ai = User.objects.create_user(
             username=settings.AI_ASSISTANT_USERNAME, password="Xk7pQm2vRt"
         )
-        room = ChatRoom.objects.create(
+        legacy = ChatRoom.objects.create(
             name=settings.AI_ASSISTANT_USERNAME,
             room_type=ChatRoom.RoomType.DIRECT,
             owner=owner,
             is_private=True,
         )
-        room.members.add(owner)
-        assert not room.members.filter(id=ai.id).exists()
+        legacy.members.add(owner, stranger, ai)
 
         call_command("ensure_ai_chat", verbosity=0)
 
-        assert room.members.filter(id=ai.id).exists()
+        assert set(legacy.members.all()) == {ai}
+        assert owner not in legacy.members.all()
+        assert stranger not in legacy.members.all()
+        assert ChatRoom.objects.filter(
+            name=direct_room_name(owner.id, ai.id), members=owner
+        ).exists()
 
 
 @pytest.mark.django_db()
@@ -1465,10 +1479,10 @@ class TestDirectRoomsAreNotShared:
         low, high = sorted((member.id, stranger.id))
         assert member_room.data["name"] == f"dm-{low}-{high}"
 
-    def test_ai_room_stays_shared(self, api_client, owner, member):
+    def test_ai_room_is_personal(self, api_client, owner, member):
         from django.conf import settings
 
-        User.objects.create_user(
+        ai = User.objects.create_user(
             username=settings.AI_ASSISTANT_USERNAME, password="Xk7pQm2vRt"
         )
 
@@ -1477,8 +1491,11 @@ class TestDirectRoomsAreNotShared:
 
         assert first.status_code == 201, first.data
         assert second.status_code == 201, second.data
-        assert first.data["id"] == second.data["id"]
+        assert first.data["id"] != second.data["id"]
         assert first.data["is_ai"] is True
+        assert second.data["is_ai"] is True
+        assert {m["id"] for m in first.data["members"]} == {owner.id, ai.id}
+        assert {m["id"] for m in second.data["members"]} == {member.id, ai.id}
 
 
 @pytest.mark.django_db()

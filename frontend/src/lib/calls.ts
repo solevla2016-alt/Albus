@@ -35,6 +35,7 @@ let myUsername = "";
 let targetUsername = "";
 let activeCallId = "";
 let connectTimer: ReturnType<typeof setTimeout> | null = null;
+let wakeLock: { release: () => Promise<void> } | null = null;
 const pendingCandidates: RTCIceCandidateInit[] = [];
 
 function emit(msg: Record<string, unknown>): void {
@@ -117,6 +118,34 @@ async function flushPending(pc: RTCPeerConnection): Promise<void> {
   }
 }
 
+let wakeLockListenerAttached = false;
+
+async function acquireScreenWakeLock(): Promise<void> {
+  if (wakeLock) return;
+  if (!wakeLockListenerAttached && typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && activeCallId) {
+        void acquireScreenWakeLock();
+      }
+    });
+    wakeLockListenerAttached = true;
+  }
+  const wakeLockApi = (navigator as Navigator & {
+    wakeLock?: { request: (type: "screen") => Promise<{ release: () => Promise<void> }> };
+  }).wakeLock;
+  if (!wakeLockApi) return;
+  try {
+    wakeLock = await wakeLockApi.request("screen");
+  } catch {
+    // The browser may refuse while the page is hidden or the battery is low.
+  }
+}
+
+function releaseScreenWakeLock(): void {
+  void wakeLock?.release().catch(() => {});
+  wakeLock = null;
+}
+
 function stopLocal(): void {
   if (myStream) {
     myStream.getTracks().forEach((t) => t.stop());
@@ -136,6 +165,7 @@ export function cleanupCall(): void {
     delete window.__callPeer;
   }
   stopLocal();
+  releaseScreenWakeLock();
   disarmConnectTimeout();
   pendingCandidates.length = 0;
   activeCallId = "";
@@ -153,6 +183,19 @@ function endWith(reason: string): void {
 
 async function createLocalMedia(mode: CallMode): Promise<MediaStream> {
   if (myStream) return myStream;
+  // iOS routes audio according to the declared session. "play-and-record"
+  // tells Safari this is a call, not a one-off sound, which keeps the call
+  // audio from being muted when the screen turns off.
+  const audioSession = (navigator as Navigator & {
+    audioSession?: { type: string };
+  }).audioSession;
+  if (audioSession) {
+    try {
+      audioSession.type = "play-and-record";
+    } catch {
+      // Older Safari does not allow changing the session type.
+    }
+  }
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: true,
     video: mode === "video",
@@ -190,6 +233,7 @@ export async function startCall(
   targetUsername = target;
   try {
     const stream = await createLocalMedia(mode);
+    void acquireScreenWakeLock();
     addLocalTracks(getPeer(), stream);
     emit({ action: "call_start", target, call_id: callId, mode });
     armConnectTimeout();
@@ -214,6 +258,7 @@ export async function acceptCall(
   targetUsername = peerUsername;
   try {
     const stream = await createLocalMedia(mode);
+    void acquireScreenWakeLock();
     addLocalTracks(getPeer(), stream);
     handlers.onPhase?.("connecting");
     emit({ action: "call_accept", target: peerUsername, call_id: callId });

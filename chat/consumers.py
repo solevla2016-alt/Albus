@@ -600,13 +600,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
         history = await self._get_recent_messages(
             self.room.id,
             settings.AI_CONTEXT_MESSAGES,
-            # В личной комнате ассистента история общая на всех пользователей,
-            # потому что это одна комната на всех. Чужие вопросы в контексте
-            # сбивали модель с темы и уводили их в GigaChat без ведома авторов,
-            # поэтому там берём только собственные сообщения спрашивающего.
-            only_user_id=(
-                self.scope["user"].id if self._is_shared_ai_room() else None
-            ),
         )
         history = build_history(history)
         answer = await get_ai_answer(prompt, history)
@@ -1504,10 +1497,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
     def _can_dm(self, user, room: ChatRoom) -> bool:
         if room.room_type != "direct":
             return True
-        # ensure_ai_chat puts every user into one single shared "direct" room,
-        # so its member list is not a DM peer list. Without this guard one user
-        # setting "кто может писать: никто" silently muted the assistant for
-        # everybody else too.
+        # A chat with the assistant is always personal: its member list is not a
+        # DM peer list, so the peer's privacy settings must not mute the bot.
         if room.members.filter(username=settings.AI_ASSISTANT_USERNAME).exists():
             return True
         for other in room.members.exclude(id=user.pk):
@@ -1518,14 +1509,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def _room_has_ai(self) -> bool:
         return self.room.members.filter(username=settings.AI_ASSISTANT_USERNAME).exists()
-
-    def _is_shared_ai_room(self) -> bool:
-        """Личная комната ассистента: одна на всех пользователей.
-
-        Имена, а не признак «в комнате есть ИИ»: общие комнаты тоже могут
-        содержать ассистента, и там чужие сообщения — это осмысленный контекст.
-        """
-        return self.room.name == settings.AI_ASSISTANT_USERNAME
 
     @database_sync_to_async
     def _validate_reply(self, reply_to_id: int) -> bool:

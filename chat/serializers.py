@@ -116,10 +116,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     def _resolve_peer(self, obj: ChatRoom):
         if obj.room_type != ChatRoom.RoomType.DIRECT:
             return None
-        ai_username = settings.AI_ASSISTANT_USERNAME
         members = list(obj.members.all())
-        if obj.name == ai_username:
-            return next((m for m in members if m.username == ai_username), None)
         request = self.context.get("request")
         me = getattr(request, "user", None)
         if not me or me.is_anonymous:
@@ -137,7 +134,7 @@ class ChatRoomSerializer(serializers.ModelSerializer):
     def get_is_ai(self, obj: ChatRoom) -> bool:
         return (
             obj.room_type == ChatRoom.RoomType.DIRECT
-            and obj.name == settings.AI_ASSISTANT_USERNAME
+            and obj.members.filter(username=settings.AI_ASSISTANT_USERNAME).exists()
         )
 
     def get_members(self, obj: ChatRoom) -> list[dict]:
@@ -260,9 +257,7 @@ class ChatRoomCreateSerializer(serializers.ModelSerializer):
                             {"direct": f"{other.username} принимает сообщения только от контактов"}
                         )
 
-                target_name = direct_room_name(request.user.id, other.id)
-            else:
-                target_name = ai_username
+            target_name = direct_room_name(request.user.id, other.id)
 
             room, _created = ChatRoom.objects.get_or_create(
                 name=target_name,

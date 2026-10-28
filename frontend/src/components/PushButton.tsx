@@ -11,6 +11,7 @@ import {
   isRunningAsPwa,
   pushCapabilities,
   pushPermission,
+  syncPushSubscription,
   type PushState,
 } from "@/lib/push";
 
@@ -52,12 +53,8 @@ export function PushButton() {
       return;
     }
     try {
-      const registration = await navigator.serviceWorker.getRegistration();
-      const subscription =
-        registration?.pushManager
-          ? await registration.pushManager.getSubscription()
-          : null;
-      setState(subscription ? "subscribed" : "prompt");
+      // Заодно восстанавливаем строку подписки на сервере, если она пропала.
+      setState(await syncPushSubscription());
     } catch {
       setState("error");
     } finally {
@@ -114,6 +111,12 @@ export function PushButton() {
         )}
         {LABELS[state]}
       </button>
+
+      {state === "subscribed" && (
+        <p className="mx-2 mb-1 text-[11px] leading-snug text-[var(--text-muted)]">
+          Нажмите, чтобы выключить. Проверочное уведомление должно прийти сразу.
+        </p>
+      )}
 
       {showIosHint && (
         <p className="mx-2 mb-1 mt-1 text-[11px] leading-snug text-[var(--text-muted)]">

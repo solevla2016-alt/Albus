@@ -77,6 +77,42 @@ async function fetchPublicKey(): Promise<string | null> {
   }
 }
 
+async function uploadSubscription(subscription: PushSubscription): Promise<boolean> {
+  const json = subscription.toJSON();
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
+
+  await apiFetch("/auth/push/subscribe/", {
+    method: "POST",
+    body: JSON.stringify({
+      endpoint: json.endpoint,
+      keys: json.keys,
+      user_agent: navigator.userAgent.slice(0, 300),
+    }),
+  });
+  return true;
+}
+
+/**
+ * Повторно отправляет уже существующую подписку на сервер.
+ *
+ * Браузер хранит подписку сам, а сервер — нет: после переустановки приложения,
+ * смены аккаунта или чистки базы строка на сервере может пропасть. Без этой
+ * синхронизации кнопка показывает «включено», а push-адресов у сервера нет.
+ */
+export async function syncPushSubscription(): Promise<PushState> {
+  if (!isPushSupported()) return "unsupported";
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = registration?.pushManager
+      ? await registration.pushManager.getSubscription()
+      : null;
+    if (!subscription) return "prompt";
+    return (await uploadSubscription(subscription)) ? "subscribed" : "error";
+  } catch {
+    return "error";
+  }
+}
+
 /** Включает уведомления: регистрирует воркер и отправляет подписку на сервер. */
 export async function enablePush(): Promise<PushState> {
   if (!isPushSupported()) return "unsupported";
@@ -99,18 +135,7 @@ export async function enablePush(): Promise<PushState> {
         applicationServerKey: urlBase64ToUint8Array(publicKey),
       }));
 
-    const json = subscription.toJSON();
-    if (!json.endpoint || !json.keys) return "error";
-
-    await apiFetch("/auth/push/subscribe/", {
-      method: "POST",
-      body: JSON.stringify({
-        endpoint: json.endpoint,
-        keys: json.keys,
-        user_agent: navigator.userAgent.slice(0, 300),
-      }),
-    });
-    return "subscribed";
+    return (await uploadSubscription(subscription)) ? "subscribed" : "error";
   } catch {
     return "error";
   }

@@ -639,7 +639,7 @@ def push_subscribe_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    PushSubscription.objects.update_or_create(
+    _subscription, created = PushSubscription.objects.update_or_create(
         endpoint=endpoint,
         defaults={
             "user": request.user,
@@ -648,6 +648,18 @@ def push_subscribe_view(request):
             "user_agent": str(request.data.get("user_agent", ""))[:300],
         },
     )
+    if created:
+        # Проверочное уведомление: пользователь сразу видит, что push доходит,
+        # а в логах остаётся ответ push-службы, если доставка не удалась.
+        from .push import send_push
+
+        send_push(
+            request.user,
+            "Уведомления включены",
+            "Albus будет присылать сюда сообщения, звонки и важные оповещения.",
+            url="/chat",
+            tag="albus-subscribed",
+        )
     return Response({"ok": True})
 
 
