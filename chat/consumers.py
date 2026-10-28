@@ -293,6 +293,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         action = data.get("action", "message")
 
+        if action == "ping":
+            await self.send_json({"type": "pong"})
+            return
+
         # Rate limit so one connection cannot flood a room.
         now = time.monotonic()
         window = 10.0

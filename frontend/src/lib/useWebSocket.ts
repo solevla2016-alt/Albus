@@ -34,6 +34,7 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const isTypingRef = useRef(false);
   const pendingMessagesRef = useRef<Record<string, unknown>[]>([]);
+  const lastServerMessageRef = useRef(0);
   const roomIdRef = useRef<number | null>(roomId);
   roomIdRef.current = roomId;
 
@@ -107,6 +108,7 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
     ws.onopen = () => {
       console.debug("[ws] open", roomName);
       reconnectAttempts.current = 0;
+      lastServerMessageRef.current = Date.now();
       setConnectionState("online");
       setSignalSender((msg) => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -123,6 +125,7 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
     };
 
     ws.onmessage = (event) => {
+      lastServerMessageRef.current = Date.now();
       const data: WebSocketMessage = JSON.parse(event.data);
 
       switch (data.type) {
@@ -353,6 +356,64 @@ export function useWebSocket(roomName: string | null, roomId: number | null = nu
         clearTimeout(reconnectTimeoutRef.current);
       }
       wsRef.current?.close();
+    };
+  }, [connect]);
+
+  useEffect(() => {
+    const ping = () => {
+      const ws = wsRef.current;
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ action: "ping" }));
+      }
+    };
+
+    const reconnectNow = () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectAttempts.current = 0;
+      connect();
+    };
+
+    const interval = setInterval(() => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (Date.now() - lastServerMessageRef.current > 60000) {
+        ws.close();
+        return;
+      }
+      ping();
+    }, 20000);
+
+    const onVisible = () => {
+      if (document.visibilityState === "hidden") return;
+      const ws = wsRef.current;
+      if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+        reconnectNow();
+        return;
+      }
+      if (ws.readyState === WebSocket.OPEN) {
+        if (Date.now() - lastServerMessageRef.current > 45000) {
+          ws.close();
+        } else {
+          ping();
+        }
+      }
+    };
+
+    const onOnline = () => {
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        reconnectNow();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onOnline);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onOnline);
     };
   }, [connect]);
 
